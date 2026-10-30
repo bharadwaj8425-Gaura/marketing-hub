@@ -1,8 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 
-// Har request par: login session refresh karta hai aur
-// bina login wale user ko /login par bhej deta hai.
+// Refreshes the login session on every request and keeps people on the right page.
 export async function middleware(request) {
   let response = NextResponse.next({ request })
 
@@ -17,9 +16,7 @@ export async function middleware(request) {
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
         },
       },
     }
@@ -30,7 +27,7 @@ export async function middleware(request) {
   } = await supabase.auth.getUser()
 
   const path = request.nextUrl.pathname
-  const isLoginPage = path.startsWith('/login')
+  const isLogin = path.startsWith('/login')
 
   function redirectTo(pathname) {
     const url = request.nextUrl.clone()
@@ -41,12 +38,14 @@ export async function middleware(request) {
     return redirect
   }
 
-  if (!user && !isLoginPage) return redirectTo('/login')
-  if (user && isLoginPage) return redirectTo('/dashboard')
+  if (!user && !isLogin) return redirectTo('/login')
+  if (user && isLogin) return redirectTo('/')
+  // old pages from earlier versions now live inside the single app
+  if (user && path !== '/') return redirectTo('/')
 
   return response
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)'],
 }

@@ -1,12 +1,13 @@
-import './globals.css'
-
 export const metadata = {
   title: 'FinStreet Marketing Hub',
-  description: 'Task assignment, chat, approvals and time tracking for the marketing team',
+  description: 'Tasks, approvals, campaigns, video library, chat and time tracking for the FinStreet marketing team',
 }
 
 export const viewport = {
-  themeColor: '#10231e',
+  themeColor: '#10231E',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 }
 
 export default function RootLayout({ children }) {
@@ -17,10 +18,10 @@ export default function RootLayout({ children }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
         />
       </head>
-      <body className="font-sans text-slate-900 antialiased">{children}</body>
+      <body>{children}</body>
     </html>
   )
 }

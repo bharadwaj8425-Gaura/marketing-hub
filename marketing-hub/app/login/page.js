@@ -1,12 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import './login.css'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [mode, setMode] = useState('login') // 'login' ya 'signup'
+  const [mode, setMode] = useState('login')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -14,176 +13,134 @@ export default function LoginPage() {
   const [infoMsg, setInfoMsg] = useState('')
   const [loading, setLoading] = useState(false)
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('signup')) setMode('signup')
+  }, [])
+
   async function handleSubmit(e) {
     e.preventDefault()
     setErrorMsg('')
     setInfoMsg('')
     setLoading(true)
-
     const supabase = createClient()
 
     if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
       if (error) {
-        setErrorMsg(error.message)
+        setErrorMsg(
+          error.message.includes('Email not confirmed')
+            ? 'Your email is not confirmed yet. Ask your admin to confirm it, or check your inbox.'
+            : error.message.includes('Invalid login')
+              ? 'Wrong email or password.'
+              : error.message
+        )
+        setLoading(false)
       } else {
-        router.push('/dashboard')
-        router.refresh()
+        window.location.href = '/'
       }
-    } else {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
-      })
-      if (error) {
-        setErrorMsg(error.message)
-      } else if (!data.session) {
-        setInfoMsg('Account created. Please confirm your email, then log in.')
-      } else {
-        router.push('/dashboard')
-        router.refresh()
-      }
+      return
     }
 
-    setLoading(false)
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: { data: { full_name: fullName.trim() }, emailRedirectTo: window.location.origin + '/login' },
+    })
+    if (error) {
+      setErrorMsg(error.message)
+      setLoading(false)
+    } else if (!data.session) {
+      setInfoMsg('Account created. Please confirm your email, then log in.')
+      setMode('login')
+      setLoading(false)
+    } else {
+      window.location.href = '/'
+    }
   }
 
-  const inputCls =
-    'w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500'
+  async function forgot() {
+    setErrorMsg('')
+    setInfoMsg('')
+    if (!email.trim()) return setErrorMsg('Type your email above first, then press "Forgot password".')
+    const { error } = await createClient().auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + '/login',
+    })
+    if (error) setErrorMsg(error.message)
+    else setInfoMsg('Password reset link sent. Check your inbox.')
+  }
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Form side */}
-      <div className="flex items-center justify-center px-5 py-12">
-        <div className="w-full max-w-sm animate-fade-up">
-          <div className="mb-8 flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-sm font-extrabold text-white shadow-lg shadow-indigo-500/30">
-              FS
-            </div>
-            <div className="leading-tight">
-              <p className="font-bold tracking-tight">FinStreet</p>
-              <p className="text-xs font-medium text-slate-400">Marketing Hub</p>
-            </div>
-          </div>
+    <div className="auth">
+      <section className="auth-side">
+        <img src="/finstreet-mark.png" alt="" className="auth-mark" />
+        <h2>FinStreet Marketing Hub</h2>
+        <p>One place for the marketing team: spaces and monthly folders, approvals, campaigns, the video library, team chat and time tracking.</p>
+        <ul>
+          <li>Board and list views for every space</li>
+          <li>Review, approve or request changes</li>
+          <li>Start / stop timer on any task</li>
+          <li>Videos, files and Drive links in one place</li>
+        </ul>
+        <small>FinStreet Education · Internal tool</small>
+      </section>
 
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            {mode === 'login' ? 'Welcome back 👋' : 'Create your account'}
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            {mode === 'login' ? 'Sign in to your workspace' : 'Join the FinStreet marketing workspace'}
-          </p>
+      <section className="auth-main">
+        <form className="auth-card" onSubmit={handleSubmit}>
+          <img src="/finstreet-logo.png" alt="FinStreet" className="auth-logo" />
+          <h1>{mode === 'login' ? 'Welcome back' : 'Create your account'}</h1>
+          <p className="sub">{mode === 'login' ? 'Log in to the marketing workspace' : 'Use your name and work email'}</p>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-            {mode === 'signup' && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Full name</label>
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className={inputCls}
-                  placeholder="Your full name"
-                />
-              </div>
-            )}
+          {mode === 'signup' && (
+            <label>
+              Full name
+              <input required value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your full name" />
+            </label>
+          )}
+          <label>
+            Work email
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@finstreeteducation.com" />
+          </label>
+          <label>
+            Password
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+            />
+          </label>
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={inputCls}
-                placeholder="you@finstreeteducation.com"
-              />
-            </div>
+          {errorMsg && <p className="msg err">{errorMsg}</p>}
+          {infoMsg && <p className="msg ok">{infoMsg}</p>}
 
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={inputCls}
-                placeholder="At least 6 characters"
-              />
-            </div>
+          <button type="submit" className="primary" disabled={loading}>
+            {loading ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
+          </button>
 
-            {errorMsg && (
-              <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 ring-1 ring-rose-100">{errorMsg}</p>
-            )}
-            {infoMsg && (
-              <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-700 ring-1 ring-emerald-100">
-                {infoMsg}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {loading ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
+          {mode === 'login' && (
+            <button type="button" className="link" onClick={forgot}>
+              Forgot password?
             </button>
-          </form>
+          )}
 
-          <p className="mt-6 text-center text-sm text-slate-500">
-            {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
+          <p className="switch">
+            {mode === 'login' ? 'New to the team?' : 'Already have an account?'}{' '}
             <button
               type="button"
+              className="link"
               onClick={() => {
                 setMode(mode === 'login' ? 'signup' : 'login')
                 setErrorMsg('')
                 setInfoMsg('')
               }}
-              className="font-semibold text-indigo-600 hover:underline"
             >
-              {mode === 'login' ? 'Sign up' : 'Login'}
+              {mode === 'login' ? 'Create an account' : 'Log in'}
             </button>
           </p>
-        </div>
-      </div>
-
-      {/* Showcase side (desktop) */}
-      <div className="relative hidden overflow-hidden border-l border-slate-200/70 bg-gradient-to-br from-indigo-50 via-white to-pink-50 lg:flex lg:items-center lg:justify-center">
-        <div className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-indigo-300/30 blur-3xl" />
-        <div className="absolute -bottom-10 right-0 h-72 w-72 rounded-full bg-pink-300/25 blur-3xl" />
-        <div className="relative w-full max-w-md space-y-4 px-8">
-          <div className="rounded-2xl border border-white bg-white/80 p-5 shadow-xl shadow-indigo-500/10 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">This week</p>
-            <p className="mt-1 text-lg font-bold">YouTube launch plan</p>
-            <div className="mt-4 space-y-2.5">
-              {[
-                ['Script draft', 'bg-emerald-100 text-emerald-700', 'Approved'],
-                ['Thumbnail design', 'bg-amber-100 text-amber-700', 'In review'],
-                ['Shorts cut-downs', 'bg-sky-100 text-sky-700', 'In progress'],
-              ].map(([t, c, s]) => (
-                <div key={t} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
-                  <span className="font-medium">{t}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c}`}>{s}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="ml-10 rounded-2xl border border-white bg-white/80 p-4 shadow-xl shadow-pink-500/10 backdrop-blur">
-            <p className="text-xs font-semibold text-slate-400"># social-media</p>
-            <div className="mt-2 flex items-start gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-pink-100 text-xs font-bold text-pink-700">
-                TM
-              </span>
-              <p className="rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-2 text-sm">Final reel is ready for review 🚀</p>
-            </div>
-          </div>
-          <p className="pt-4 text-center text-sm text-slate-500">
-            Tasks · Approvals · Team chat · Time tracking — all in one place.
-          </p>
-        </div>
-      </div>
+        </form>
+      </section>
     </div>
   )
 }
