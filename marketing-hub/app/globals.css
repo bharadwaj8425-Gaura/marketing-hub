@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   FinStreet theme: ledger-green accent, soft green-grey neutrals,
+   dark green sidebar. "indigo" and "slate" utilities are remapped so
+   every page picks up the theme automatically.
+   ------------------------------------------------------------------ */
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --color-indigo-50: #ecf6f2;
+  --color-indigo-100: #d6ede6;
+  --color-indigo-200: #b3dccf;
+  --color-indigo-300: #86c5b2;
+  --color-indigo-400: #46a38a;
+  --color-indigo-500: #188470;
+  --color-indigo-600: #0b6e5b;
+  --color-indigo-700: #095a4a;
+  --color-indigo-800: #08483c;
+  --color-indigo-900: #063a30;
+
+  --color-slate-50: #f5f8f7;
+  --color-slate-100: #e7ecea;
+  --color-slate-200: #d3dbd8;
+  --color-slate-300: #bfcbc6;
+  --color-slate-400: #8a9c96;
+  --color-slate-500: #586964;
+  --color-slate-600: #46554f;
+  --color-slate-700: #33413c;
+  --color-slate-800: #1f2c28;
+  --color-slate-900: #13201c;
+
+  --color-side: #10231e;
+  --color-side-fg: #d3e2dc;
+  --color-side-muted: #8aa59c;
+  --color-side-line: #21403a;
+  --color-side-active: #1c3b33;
+
+  --radius-xl: 0.6rem;
+  --radius-2xl: 0.85rem;
+  --shadow-soft: 0 1px 2px rgb(16 35 30 / 0.06), 0 4px 14px rgb(16 35 30 / 0.05);
+  --shadow-lift: 0 1px 2px rgb(16 35 30 / 0.08), 0 8px 24px rgb(16 35 30 / 0.1);
+  --animate-fade-up: fade-up 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pop: pop 0.18s ease-out both;
+  --animate-slide-in: slide-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes slide-in {
+    from { transform: translateX(24px); opacity: 0.4; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+}
+
+body { background: #edf1ef; }
+
+h1, .font-display { font-family: var(--font-display); letter-spacing: -0.015em; }
+main h1.text-2xl { font-weight: 700; font-size: 1.6rem; }
+
+/* Cards */
+.rounded-xl.border.bg-white,
+.rounded-2xl.border.bg-white {
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.02);
+  border-color: #d3dbd8;
+}
+a.rounded-xl.border.bg-white,
+a > .rounded-xl.border.bg-white { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+a.rounded-xl.border.bg-white:hover,
+a:hover > .rounded-xl.border.bg-white { box-shadow: var(--shadow-lift); border-color: #bfcbc6; }
+
+.border-dashed.bg-white { background: rgb(255 255 255 / 0.7); }
+
+/* Primary buttons */
+button.bg-indigo-600, a.bg-indigo-600 { transition: background-color 0.15s ease; }
+button.bg-indigo-600:hover:not(:disabled), a.bg-indigo-600:hover { background-color: #095a4a; }
+
+/* Tables */
+table thead th { font-weight: 600; letter-spacing: 0.05em; }
+table tbody tr { transition: background-color 0.12s ease; }
+
+/* Inputs */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select,
+textarea { transition: border-color 0.15s ease, box-shadow 0.15s ease; background-color: #fff; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+select:focus,
+textarea:focus { outline: none; border-color: #0b6e5b; box-shadow: 0 0 0 3px rgb(11 110 91 / 0.15); }
+input[type="checkbox"] { accent-color: #0b6e5b; }
+
+/* Modals */
+.fixed.inset-0.bg-slate-900\/40 { backdrop-filter: blur(2px); }
+
+/* Thin scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #bfcbc6 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #bfcbc6; border-radius: 999px; }
+*::-webkit-scrollbar-track { background: transparent; }
+.side-scroll { scrollbar-color: #21403a transparent; }
+.side-scroll::-webkit-scrollbar-thumb { background: #21403a; }
+
+::selection { background: #b3dccf; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
