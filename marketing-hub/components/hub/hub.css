@@ -432,3 +432,12 @@ html,body{margin:0;padding:0}
 .btn.ghost-danger{color:var(--danger);border-color:var(--line)}
 .btn.ghost-danger:hover{background:var(--danger-bg)}
 .kbd{display:inline-grid;place-items:center;min-width:30px;height:26px;padding:0 6px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:6px;font-family:var(--font-mono);font-size:12px;background:var(--surface-2)}
+
+.sprow{position:relative}
+.sprow .sp{width:100%}
+.sp-del{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:var(--sidebar);border:0;color:var(--sidebar-muted);padding:4px;border-radius:5px;display:none;cursor:pointer}
+.sprow:hover .sp-del,.sp-del:focus-visible{display:grid}
+.sp-del:hover{color:#ff8a80;background:var(--sidebar-line)}
+.sp-add{color:var(--sidebar-muted);border:1px dashed var(--sidebar-line)!important;margin-top:6px}
+.sp-add:hover{color:#fff}
+@media (hover:none){.sp-del{display:grid}}

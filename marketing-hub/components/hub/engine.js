@@ -133,7 +133,7 @@ function renderSide(){
   h+='<button class="sp'+(tv&&S.sp==='all'&&S.fa==='all'?' on':'')+'" data-act="space" data-id="all"><i style="background:var(--sidebar-muted)"></i><span>All spaces</span><em>'+visTasks().filter(t=>!CLOSED.includes(t.st)).length+'</em></button>';
   vs.forEach(s=>{
     const on=tv&&S.sp===s.id;
-    h+='<button class="sp'+(on?' on':'')+'" data-act="space" data-id="'+s.id+'"><i style="background:'+s.color+'"></i><span>'+esc(s.name)+'</span><em>'+openCt(s.id)+'</em></button>';
+    h+='<div class="sprow"><button class="sp'+(on?' on':'')+'" data-act="space" data-id="'+s.id+'"><i style="background:'+s.color+'"></i><span>'+esc(s.name)+'</span><em>'+openCt(s.id)+'</em></button>'+(can('manage')?'<button class="sp-del" data-act="delSpace" data-id="'+s.id+'" title="Delete space" aria-label="Delete '+esc(s.name)+'">'+ic('trash',14)+'</button>':'')+'</div>';
     if(on){
       h+='<div class="folders"><button class="fo'+(S.fo==='all'?' on':'')+'" data-act="folder" data-id="all">All months</button>';
       folders.filter(f=>f.sp===s.id).forEach(f=>{h+='<button class="fo'+(S.fo===f.id?' on':'')+'" data-act="folder" data-id="'+f.id+'">'+ic('file',13)+esc(f.name)+'<em>'+visTasks().filter(t=>t.fo===f.id).length+'</em></button>'});
@@ -141,6 +141,7 @@ function renderSide(){
       h+='</div>';
     }
   });
+  if(can('manage'))h+='<button class="sp sp-add" data-act="newSpace">'+ic('plus',15)+'<span>New space</span></button>';
   h+='<div class="side-note"><div class="me-row">'+av(me())+'<span><b>'+esc(me().name)+'</b><small>'+ROLES[me().role]+'</small></span><button class="ibtn sm" data-act="logout" title="Log out" aria-label="Log out">'+ic('logout',15)+'</button></div>FinStreet Education · Marketing Hub</div>';
   $('#side').innerHTML=h;
 }
@@ -793,7 +794,7 @@ document.addEventListener('click',function(e){
    case 'csvPick':{const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=()=>{const f=inp.files[0];if(f)f.text().then(importCsv)};inp.click();break}
    case 'editSpace':{const sp=spById(S.sp),fs=folders.filter(f=>f.sp===sp.id).sort((x,y)=>x.ym<y.ym?-1:1);modal('<h3>Edit space</h3><form data-form="editspace" style="display:flex;flex-direction:column;gap:12px"><label class="fld">Space name<input type="text" name="name" required value="'+esc(sp.name)+'"></label><label class="fld">Short name (sidebar and cards)<input type="text" name="short" value="'+esc(sp.short||'')+'"></label><div class="fld">Colour<div class="sw">'+['#D9433B','#D97A1E','#2A7DE1','#8A5CD6','#1B9E77','#0F8B9E','#C2417A','#6B7A75'].map(c2=>'<label><input type="radio" name="color" value="'+c2+'"'+(sp.color===c2?' checked':'')+'><span style="background:'+c2+'"></span></label>').join('')+'</div></div><div class="fld">Monthly folders</div><div class="asg">'+fs.map(f=>{const n=tasks.filter(x=>x.fo===f.id).length;return '<span class="tag">'+esc(f.name)+' · '+n+(n?'':'<button type="button" data-act="rmFolder" data-id="'+f.id+'" aria-label="Remove folder">'+ic('x',13)+'</button>')+'</span>'}).join('')+'</div><div class="foot"><button type="button" class="btn danger" data-act="delSpace" style="margin-right:auto">'+ic('trash',15)+'Delete space</button><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>');break}
    case 'rmFolder':{const i=folders.findIndex(f=>f.id===id);if(i>-1&&!tasks.some(x=>x.fo===id)){folders.splice(i,1);if(S.fo===id)S.fo='all';closeModal();renderAll();toast('Folder removed.')}break}
-   case 'delSpace':{const sp=spById(S.sp),n=tasks.filter(x=>x.sp===sp.id).length;confirmBox('Delete "'+sp.name+'"?',(n?n+' tasks in this space will also be deleted. ':'')+'This cannot be undone.','Delete space',()=>{
+   case 'delSpace':{if(!can('manage'))return;const sp=spById(el.dataset.id||S.sp);if(!sp)return;const n=tasks.filter(x=>x.sp===sp.id).length;confirmBox('Delete "'+sp.name+'"?',(n?n+' tasks in this space will also be deleted. ':'')+'This cannot be undone.','Delete space',()=>{
       const ids=new Set(tasks.filter(x=>x.sp===sp.id).map(x=>x.id));for(let i=tasks.length-1;i>=0;i--)if(ids.has(tasks[i].id))tasks.splice(i,1);for(let i=entries.length-1;i>=0;i--)if(ids.has(entries[i].tid))entries.splice(i,1);
       for(let i=folders.length-1;i>=0;i--)if(folders[i].sp===sp.id)folders.splice(i,1);for(let i=channels.length-1;i>=0;i--)if(channels[i].sp===sp.id&&!channels[i].custom)channels.splice(i,1);
       spaces.splice(spaces.indexOf(sp),1);S.view='dashboard';S.sp='all';S.fo='all';S.drawer=null;renderAll();toast('Space deleted.')});break}
