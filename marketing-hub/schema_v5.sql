@@ -20,6 +20,12 @@ declare
   is_admin boolean;
   inv jsonb;
 begin
+  -- changes made from the Supabase dashboard / SQL editor are trusted
+  if auth.uid() is null then
+    if tg_op = 'DELETE' then return old; end if;
+    new.updated_at := now();
+    return new;
+  end if;
   select coalesce(p.role = 'admin', false) or exists (
     select 1 from hub_docs d where d.kind = 'member' and d.id = auth.uid()::text and d.doc->>'role' = 'admin')
   into is_admin from profiles p where p.id = auth.uid();

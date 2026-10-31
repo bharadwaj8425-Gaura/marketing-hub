@@ -424,3 +424,11 @@ html,body{margin:0;padding:0}
 .drop .btn+.btn{margin-left:6px}
 #hub-root{height:100%}
 [hidden]:not([hidden=until-found i]){display:none!important}
+:root{--st-cancelled:#8A6F6F;--st-cancelled-bg:#EFE7E7}
+.st-cancelled{color:var(--st-cancelled);background:var(--st-cancelled-bg)}
+.kpi.click{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.kpi.click:hover{border-color:var(--line-2);box-shadow:var(--shadow)}
+.actbar{display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 4px}
+.btn.ghost-danger{color:var(--danger);border-color:var(--line)}
+.btn.ghost-danger:hover{background:var(--danger-bg)}
+.kbd{display:inline-grid;place-items:center;min-width:30px;height:26px;padding:0 6px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:6px;font-family:var(--font-mono);font-size:12px;background:var(--surface-2)}
