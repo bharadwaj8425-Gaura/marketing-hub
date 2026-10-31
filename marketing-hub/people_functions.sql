@@ -1,0 +1,4 @@
+-- Add / remove people from the app (admin only). Already applied to Supabase on 2026-10-31.
+-- hub_add_user(p_name, p_email, p_password, p_role, p_title, p_sp) creates a confirmed login.
+-- hub_remove_user(p_id) deletes the login (profile cascades) and the member doc.
+-- See Supabase > Database > Functions for the full source.
