@@ -8,3 +8,5 @@
 --   trigger trg_hub_notif         on insert of kind='notif' calls the hub-notify edge function
 -- Edge function source: supabase/functions/hub-notify/index.ts (deployed with verify_jwt = false;
 -- it only accepts a notification id and reads the row itself with the service role).
+-- 2026-11-24 later: trigger trg_hub_keep_nt (function hub_keep_nt) keeps member alert settings ("nt")
+-- when an older app tab saves a member record without them. Email is on for every member with all updates.

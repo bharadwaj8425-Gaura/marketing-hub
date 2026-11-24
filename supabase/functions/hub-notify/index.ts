@@ -4,7 +4,8 @@
 // and claims the row first so a notification is never delivered twice.
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const DEFAULT_EV = ['assign', 'start', 'review', 'approved', 'changes', 'done', 'cancel', 'mention', 'test']
+const DEFAULT_EV = ['chat', 'assign', 'start', 'done', 'review', 'approved', 'changes', 'cancel', 'mention', 'timer', 'comment', 'status', 'other']
+const CHAT_GAP_MIN = 10 // at most one chat email per person per chat every 10 minutes
 const json = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'Content-Type': 'application/json' } })
 const clean = (s: string) => String(s || '').replace(/[\n\t]+/g, ' ').replace(/ {4,}/g, '   ').trim()
 const escH = (s: string) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
@@ -62,16 +63,23 @@ Deno.serve(async (req) => {
     const ev = n.ev || 'other'
     const evs = Array.isArray(nt.ev) ? (nt.ev as string[]) : DEFAULT_EV
     if (ev !== 'test' && !evs.includes(ev)) { out.skip = 'event ' + ev + ' is off for this person'; return await finish() }
-    const who = fromR.data?.full_name || String(fromR.data?.email || 'Someone').split('@')[0]
+    if (ev === 'chat' && nt.mail) {
+      const since = new Date(Date.now() - CHAT_GAP_MIN * 60000).toISOString()
+      const { count } = await sb.from('hub_docs').select('id', { count: 'exact', head: true }).eq('kind', 'notif').eq('doc->>to', n.to).eq('doc->>ev', 'chat').eq('doc->>ch', n.ch || '').eq('doc->out->>mail', 'sent').gte('created_at', since)
+      if ((count || 0) > 0) { out.mail = 'grouped (chat email sent in the last ' + CHAT_GAP_MIN + ' min)'; out.wa = 'off'; return await finish() }
+    }
+    const self = n.to === n.from
+    const who = self ? 'You' : (fromR.data?.full_name || String(fromR.data?.email || 'Someone').split('@')[0])
     const task = n.tn ? '#' + n.tn + ' ' + (n.title || '') : ''
     const url = cfg.APP_URL || 'https://marketing-hub-sigma-virid.vercel.app'
     const what = String(n.tx || '')
-    const subject = 'FinStreet Hub: ' + who + ' ' + what.slice(0, 90) + (task && !what.includes('#' + n.tn) ? ' (' + task.slice(0, 60) + ')' : '')
+    const subject = (ev === 'chat' ? 'New message · ' : ev === 'mention' ? 'You were mentioned · ' : 'FinStreet Hub · ') + who + ' ' + what.slice(0, 90) + (task && !what.includes('#' + n.tn) ? ' (' + task.slice(0, 60) + ')' : '')
     const html = '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#13201C;max-width:560px">'
       + '<p style="margin:0 0 12px"><b>' + escH(who) + '</b> ' + escH(what) + '</p>'
       + (task ? '<p style="margin:0 0 12px;padding:10px 12px;background:#EDF1EF;border-radius:8px">' + escH(task) + '</p>' : '')
       + '<p style="margin:0 0 16px"><a href="' + escH(url) + '" style="background:#0B6E5B;color:#fff;padding:9px 14px;border-radius:8px;text-decoration:none;display:inline-block">Open the Marketing Hub</a></p>'
-      + '<p style="margin:0;color:#586964;font-size:12px">You get this because email alerts are on for your FinStreet Hub account. An admin can turn them off in Team and access.</p></div>'
+      + (ev === 'chat' ? '<p style="margin:0 0 12px;color:#586964;font-size:13px">More messages in this chat in the next ' + CHAT_GAP_MIN + ' minutes are not emailed separately. Open the hub to read them.</p>' : '')
+      + '<p style="margin:0;color:#586964;font-size:12px">You get this because email alerts are on for your FinStreet Hub account. Change them in Team and access.</p></div>'
     const email = String(nt.email || profR.data?.email || '')
     if (nt.mail && email) out.mail = await sendMail(cfg, email, subject, html)
     else out.mail = nt.mail ? 'no email' : 'off'

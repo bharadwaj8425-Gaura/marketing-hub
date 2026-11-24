@@ -302,7 +302,10 @@ function sendMsg(x){
   const m=M(S.ch,S.me,nowT(),(x&&x.tx)||'',x||{});
   if(S.reply){m.reply=S.reply;S.reply=null}
   messages.push(m);S.seen[S.ch]=(S.seen[S.ch]||0)+1;
-  if(m.tx){const ids=mentionIds(m.tx),c=channels.find(x=>x.id===m.ch);if(ids.length&&c)notifyUsers(ids,'mention',null,'mentioned you in '+(c.kind==='dm'?'a direct message':c.name)+': '+m.tx.slice(0,160),{ch:c.id,ev:'mention'})}
+  {const c=channels.find(x=>x.id===m.ch);if(c){const ids=m.tx?mentionIds(m.tx):[],what=m.tx?m.tx.slice(0,200):m.media?(m.media.type==='voice'?'a voice note':m.media.type==='image'?'a photo':m.media.type==='video'?'a video':'a file: '+(m.media.name||'')):'';
+    if(ids.length)notifyUsers(ids,'mention',null,'mentioned you in '+(c.kind==='dm'?'a direct message':c.name)+': '+what,{ch:c.id,ev:'mention'});
+    const rest=chMembers(c).filter(x=>x!==S.me&&!ids.includes(x));
+    if(rest.length)notifyUsers(rest,'chat',null,(c.kind==='dm'?'sent you a message: ':'wrote in '+c.name+': ')+what,{ch:c.id,ev:'chat'})}}
   S.chatDraft='';renderMain();
 }
 
@@ -837,7 +840,7 @@ document.addEventListener('click',function(e){
       modal('<h3>'+esc(u.name)+'</h3><form data-form="member" data-u="'+u.id+'" style="display:flex;flex-direction:column;gap:12px"><p class="muted" style="margin:0">'+esc(u.email||'')+'</p><label class="fld">Job title<input type="text" name="title" value="'+esc(u.title||'')+'" placeholder="For example, Video Editor"></label>'
        +(self?'<label class="fld">New password (leave empty to keep)<input type="password" name="pw" minlength="6" autocomplete="new-password"></label>':'')
        +(adm?'<label class="fld">Role<select name="role"'+(self?' disabled':'')+'>'+['admin','manager','reviewer','member','external'].map(r=>'<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+ROLES[r]+'</option>').join('')+'</select></label><div class="fld">Spaces they can see (none ticked = all spaces)</div><div class="checks">'+spaces.map(s2=>'<label><input type="checkbox" name="sp" value="'+s2.id+'"'+(Array.isArray(u.sp)&&u.sp.includes(s2.id)?' checked':'')+'><i class="dot" style="background:'+s2.color+'"></i>'+esc(s2.short||s2.name)+'</label>').join('')+'</div>'+(self?'':'<label class="ck"><input type="checkbox" name="inactive"'+(u.active===false?' checked':'')+'><span>Deactivate (hides them from assignee lists and chats)</span></label>'):'<p class="muted" style="margin:0">Your role: '+ROLES[u.role]+'. Only an admin can change roles and space access.</p>')
-       +'<button type="button" class="btn" data-act="ntEdit" data-u="'+u.id+'" style="align-self:flex-start">'+ic('bell',14)+'Email and WhatsApp alerts</button>'
+       +'<button type="button" class="btn" data-act="ntEdit" data-u="'+u.id+'" style="align-self:flex-start">'+ic('bell',14)+'Email alerts</button>'
        +'<div class="foot">'+(adm&&!self?'<button type="button" class="btn danger" data-act="rmPerson" data-u="'+u.id+'" style="margin-right:auto">'+ic('trash',15)+'Remove from team</button>':'')+'<button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>');break}
    case 'addPerson':{if(me().role!=='admin')return;const pw='Fin'+Math.random().toString(36).slice(2,8)+'!';
       modal('<h3>Add person</h3><form data-form="addperson" style="display:flex;flex-direction:column;gap:12px"><p class="muted" style="margin:0">Creates their account straight away. Share the email and password with them; they can change the password after logging in.</p><label class="fld">Full name<input type="text" name="name" required placeholder="For example, Riya Sharma"></label><label class="fld">Work email<input type="email" name="email" required placeholder="name@finstreeteducation.com"></label><label class="fld">Password<input type="text" name="pw" required minlength="6" value="'+pw+'"></label><label class="fld">Job title<input type="text" name="title" placeholder="For example, Video Editor"></label><label class="fld">Role<select name="role">'+['member','reviewer','manager','admin','external'].map(r=>'<option value="'+r+'">'+ROLES[r]+'</option>').join('')+'</select></label><div class="fld">Spaces they can see (none ticked = all spaces)</div><div class="checks">'+spaces.map(s2=>'<label><input type="checkbox" name="sp" value="'+s2.id+'"><i class="dot" style="background:'+s2.color+'"></i>'+esc(s2.short||s2.name)+'</label>').join('')+'</div><p class="muted" style="margin:0;font-size:12.5px">Note: everyone with an @finstreeteducation.com email is an Admin automatically.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Add person</button></div></form>');break}
@@ -928,7 +931,7 @@ const SER={
   task:x=>{const c=Object.assign({},x);c.files=(x.files||[]).filter(f=>!f.up);return c},
   entry:x=>x, lib:x=>x, msg:x=>x, camp:x=>x, invite:x=>x,
   channel:x=>pick(x,['name','kind','sp','custom','members','desc']),
-  member:x=>pick(x,['title','role','sp','active','nt']),
+  member:x=>{const o=pick(x,['title','role','sp','active']);if(x.nt&&typeof x.nt==='object')o.nt=x.nt;return o},
   timer:x=>x, setting:x=>x, mark:x=>x
 };
 function collect(){
@@ -972,7 +975,7 @@ function applyRow(kind,id,doc,isDel){
     if(isDel){if(i>-1)arr.splice(i,1)}else{const o=Object.assign({},doc,{id:id});if(kind==='task'&&o.n>tn)tn=o.n;if(i>-1)arr[i]=o;else arr.push(o)}
     if(kind==='msg'&&!isDel&&doc.u!==S.me)ping(doc);
     return true}
-  if(kind==='member'){const u=users.find(x=>x.id===id);if(u&&isDel){users.splice(users.indexOf(u),1);return true}if(!u&&!isDel&&doc.name){users.push({id:id,name:doc.name,email:doc.email||'',title:doc.title||'',role:/@finstreeteducation\.com$/.test(doc.email||'')?'admin':(doc.role||'member'),hue:hueOf(id),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true});return true}if(u&&!isDel){const pa=(D.profiles||[]).find(x=>x.id===id);Object.assign(u,{nt:doc.nt||null,title:doc.title||'',role:pa&&pa.role==='admin'?'admin':(doc.role||u.role),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true})}return true}
+  if(kind==='member'){const u=users.find(x=>x.id===id);if(u&&isDel){users.splice(users.indexOf(u),1);return true}if(!u&&!isDel&&doc.name){users.push({id:id,name:doc.name,email:doc.email||'',title:doc.title||'',role:/@finstreeteducation\.com$/.test(doc.email||'')?'admin':(doc.role||'member'),hue:hueOf(id),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true});return true}if(u&&!isDel){const pa=(D.profiles||[]).find(x=>x.id===id);Object.assign(u,{nt:doc.nt&&typeof doc.nt==='object'?doc.nt:u.nt,title:doc.title||'',role:pa&&pa.role==='admin'?'admin':(doc.role||u.role),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true})}return true}
   if(kind==='timer'){if(isDel){delete timers[id];if(id===S.me)S.timer=null}else{timers[id]=doc;if(id===S.me)S.timer=doc}return true}
   if(kind==='setting'&&id==='flags'&&!isDel){S.flags=doc;return true}
   if(kind==='mark'){if(isDel)delete marks[id];else marks[id]=Array.isArray(doc.ids)?doc.ids:[];return true}
@@ -1003,7 +1006,7 @@ function load(rows){
   (D.profiles||[]).forEach(p=>{if(!users.some(u=>u.id===p.id))users.push({id:p.id,name:p.full_name||String(p.email||'').split('@')[0]||'Member',email:p.email||'',title:'',role:p.role==='admin'?'admin':p.role==='manager'?'manager':'member',hue:hueOf(p.id),sp:'all',active:true})});
   rows.forEach(r=>{
     const d=r.doc||{};
-    if(r.kind==='member'){const u=users.find(x=>x.id===r.id);if(u){const pr=u.role;Object.assign(u,{nt:d.nt||null,title:d.title||'',role:pr==='admin'?'admin':(d.role||pr),sp:pr==='admin'?'all':(d.sp||'all'),active:d.active!==false,hasDoc:true})}}
+    if(r.kind==='member'){const u=users.find(x=>x.id===r.id);if(u){const pr=u.role;Object.assign(u,{nt:d.nt&&typeof d.nt==='object'?d.nt:undefined,title:d.title||'',role:pr==='admin'?'admin':(d.role||pr),sp:pr==='admin'?'all':(d.sp||'all'),active:d.active!==false,hasDoc:true})}}
     else if(r.kind==='timer'){timers[r.id]=d;if(r.id===S.me)S.timer=d}
     else if(r.kind==='setting'){if(r.id==='flags')S.flags=Object.assign(S.flags,d)}
     else if(r.kind==='mark'){marks[r.id]=Array.isArray(d.ids)?d.ids:[]}
@@ -1129,24 +1132,26 @@ function bulkBar(ts){
 function mentionIds(tx){const out=new Set();(String(tx||'').match(/@([A-Za-z]+)/g)||[]).forEach(m=>{const n=m.slice(1).toLowerCase();users.forEach(u=>{if(u.id!==S.me&&u.active!==false&&first(u).toLowerCase()===n)out.add(u.id)})});return Array.from(out)}
 
 /* ---------- notifications: stored per person in hub_docs (kind "notif") ---------- */
-const EVRANK=['other','status','comment','timer','start','assign','review','changes','approved','cancel','done','mention'];
-const NTYPE={task:'Task update',approval:'Approval',comment:'Comment',mention:'Mention',timer:'Timer'};
+const EVRANK=['other','chat','status','comment','timer','start','assign','review','changes','approved','cancel','done','mention'];
+const NTYPE={chat:'Chat',task:'Task update',approval:'Approval',comment:'Comment',mention:'Mention',timer:'Timer'};
 const nbuf=new Map();let nT=null;
+const SELF_EV=['start','done','review','cancel','timer'];
 function notifyTask(t,type,tx,extra){
   if(!t)return;extra=extra||{};
   const to=new Set([].concat(t.as||[],[t.rv,t.by],extra.also||[]).filter(Boolean));
   users.forEach(u=>{if(u.role==='admin'&&u.active!==false)to.add(u.id)});
-  (extra.skip||[]).forEach(x=>to.delete(x));to.delete(S.me);
+  (extra.skip||[]).forEach(x=>to.delete(x));
+  if(SELF_EV.includes(extra.ev))extra.self=true;else to.delete(S.me);
   notifyUsers(Array.from(to),type,t,tx,extra);
 }
 function notifyUsers(ids,type,t,tx,extra){
   extra=extra||{};
   ids.forEach(id=>{
-    if(id===S.me)return;const u=users.find(x=>x.id===id);if(!u||u.active===false)return;
+    if(id===S.me&&!extra.self)return;const u=users.find(x=>x.id===id);if(!u||u.active===false)return;
     if(u.role==='external'&&t&&!(t.as||[]).includes(id))return;
     const k=id+'|'+(t?t.id:extra.ch||'')+'|'+type;const ex=nbuf.get(k);
     if(ex){if(ex.tx.length<400)ex.tx+=' · '+tx;if(extra.ev&&EVRANK.indexOf(extra.ev)>EVRANK.indexOf(ex.ev))ex.ev=extra.ev;return}
-    nbuf.set(k,{to:id,from:S.me,type:type,ev:extra.ev||(type==='comment'?'comment':type==='mention'?'mention':'other'),tid:t?t.id:'',tn:t?t.n:'',title:t?t.title:'',ch:extra.ch||'',tx:String(tx||''),at:new Date().toISOString(),read:false});
+    nbuf.set(k,{to:id,from:S.me,type:type,ev:extra.ev||(type==='comment'?'comment':type==='mention'?'mention':'other'),tid:t?t.id:'',tn:t?t.n:'',title:t?t.title:'',ch:extra.ch||'',tx:String(tx||''),at:new Date().toISOString(),read:id===S.me});
   });
   clearTimeout(nT);nT=setTimeout(flushN,1200);
 }
@@ -1160,16 +1165,16 @@ function gotNotif(id,doc,isDel){
   if(isDel){if(i>-1){notifs.splice(i,1);return true}return false}
   if(!doc||doc.to!==S.me)return false;
   const n=Object.assign({},doc,{id:id});
-  if(i>-1){if(notifs[i].read)n.read=true;notifs[i]=n;if(n.ev==='test'&&n.sent===true&&n.out&&S.testN===id){S.testN=null;toast('Test result · Email: '+(n.out.mail||'-')+' · WhatsApp: '+(n.out.wa||'-')+(n.out.error?' · '+n.out.error:''))}return true}
+  if(i>-1){if(notifs[i].read)n.read=true;notifs[i]=n;if(n.ev==='test'&&n.sent===true&&n.out&&S.testN===id){S.testN=null;toast('Test email: '+(n.out.mail||'-')+(n.out.error?' · '+n.out.error:''))}return true}
   notifs.unshift(n);
-  if(Date.now()-Date.parse(n.at||0)<120000)alertNotif(n);
+  if(n.from!==S.me&&Date.now()-Date.parse(n.at||0)<120000)alertNotif(n);
   return true;
 }
 async function refreshNotifs(){
   const {data}=await sb.from('hub_docs').select('kind,id,doc').eq('kind','notif').eq('doc->>to',S.me).order('created_at',{ascending:false}).limit(200);
   if(data){notifs=data.map(r=>Object.assign({},r.doc,{id:r.id}));softRender()}
 }
-function nText(n){return esc(uById(n.from).name)+' '+fmtText(n.tx||'')}
+function nText(n){return (n.from===S.me?'You':esc(uById(n.from).name))+' '+fmtText(n.tx||'')}
 function ago(iso){const s=(Date.now()-Date.parse(iso||0))/1000;if(!(s>=0))return '';if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';const d=new Date(iso);return d.getDate()+' '+MS[d.getMonth()]+', '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}
 function outTag(n){const o=n.out;if(!o)return '';const t=(k,l)=>o[k]==='sent'?' · <span class="dl ok">'+l+' sent</span>':/^error/.test(o[k]||'')?' · <span class="dl bad" title="'+esc(o[k])+'">'+l+' failed</span>':'';return t('mail','Email')+t('wa','WhatsApp')}
 function nRow(n){
@@ -1198,7 +1203,7 @@ function openNotif(n){
   if(n.ch&&channels.some(c=>c.id===n.ch)){S.view='chat';S.ch=n.ch;S.chatOpen=true;S.bell=false;S.drawer=null;renderAll()}
 }
 function vInbox(){
-  const tabs=[['all','All'],['task','Tasks'],['approval','Approvals'],['comment','Comments and mentions'],['timer','Timer']];
+  const tabs=[['all','All'],['chat','Chat'],['task','Tasks'],['approval','Approvals'],['comment','Comments and mentions'],['timer','Timer']];
   const inTab=n=>S.ntab==='all'||(S.ntab==='comment'?(n.type==='comment'||n.type==='mention'):n.type===S.ntab);
   const list=notifs.filter(n=>inTab(n)&&(!S.nun||!n.read)),un=notifs.filter(n=>!n.read).length;
   let h='<div class="pagehead"><div class="grow"><h2>Inbox</h2><p>Every step on your tasks: new tasks, assignments, status changes, approvals, comments, mentions and timers'+(me().role==='admin'?'. As an admin you get every update across the team':'')+'.</p></div>'
@@ -1325,18 +1330,18 @@ setInterval(function(){
    v8: email + WhatsApp alerts per account, admin delivery setup,
    add many tasks at once
    ===================================================================== */
-const EVS=[['assign','Task assigned / new task'],['start','Work started'],['done','Task closed'],['review','Sent for approval'],['approved','Approved'],['changes','Changes requested'],['cancel','Task cancelled'],['mention','@mentions'],['timer','Timer start and stop'],['comment','Every comment']];
-const EV_DEFAULT=['assign','start','review','approved','changes','done','cancel','mention'];
+const EVS=[['chat','Team chat messages'],['assign','Task assigned / new task'],['start','Work started'],['done','Task closed'],['review','Sent for approval'],['approved','Approved'],['changes','Changes requested'],['cancel','Task cancelled'],['mention','@mentions'],['timer','Timer start and stop'],['comment','Every comment'],['status','Other status changes'],['other','Every other update (subtasks, files, dates…)']];
+const EV_DEFAULT=EVS.map(x=>x[0]);
 const ntOf=u=>Object.assign({mail:false,wa:false,email:'',phone:'',ev:EV_DEFAULT.slice()},u.nt||{});
 const canNt=u=>me().role==='admin'||u.id===S.me;
 function alertsPanels(){
   const adm=me().role==='admin',list=adm?activeUsers():[me()];
-  const sw=(u,k,on)=>'<button class="switch sm" role="switch" aria-checked="'+on+'" aria-label="'+(k==='mail'?'Email':'WhatsApp')+' alerts for '+esc(u.name)+'" data-act="ntToggle" data-u="'+u.id+'" data-k="'+k+'"></button>';
-  let h='<div class="panel" style="margin-bottom:14px"><h3>Email and WhatsApp alerts<small>'+(adm?'add, change or remove for any account':'your account')+'</small></h3>'
-   +'<p class="muted" style="margin:0 0 10px;font-size:12.5px">When alerts are on, the person gets an email and/or WhatsApp message for the events ticked on their account: task assigned, work started, task closed, sent for approval, approved, changes requested'+(adm?'. Admins get these for every task in the team':'')+'.</p>'
-   +'<div class="tbl-wrap" style="border:0"><table class="team-now"><thead><tr><th>Person</th><th>Email for alerts</th><th>WhatsApp number</th><th>Email</th><th>WhatsApp</th><th></th></tr></thead><tbody>'
-   +list.map(u=>{const n=ntOf(u);return '<tr><td><span style="display:flex;gap:8px;align-items:center;white-space:nowrap">'+av(u)+esc(u.name)+'</span></td><td class="mono" style="font-size:12.5px">'+esc(n.email||u.email||'-')+'</td><td class="mono" style="font-size:12.5px">'+(n.phone?esc(n.phone):'<span class="muted">not added</span>')+'</td><td>'+sw(u,'mail',!!n.mail)+'</td><td>'+sw(u,'wa',!!n.wa)+'</td><td><button class="btn sm" data-act="ntEdit" data-u="'+u.id+'">'+ic('edit',13)+'Edit</button></td></tr>'}).join('')
-   +'</tbody></table></div></div>';
+  const sw=(u,on)=>'<button class="switch sm" role="switch" aria-checked="'+on+'" aria-label="Email alerts for '+esc(u.name)+'" data-act="ntToggle" data-u="'+u.id+'" data-k="mail"></button>';
+  let h='<div class="panel" style="margin-bottom:14px"><h3>Email alerts<small>'+(adm?'add, change or remove for any account':'your account')+'</small></h3>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:12.5px">With email on, each person gets an email for everything that concerns them: team chat messages, tasks assigned, work started and closed (also a copy to the person who did it), sent for approval, approved, changes requested, comments and other updates. '+(adm?'Admins get every update in the team. ':'')+'Press <b>Edit</b> to choose which updates.</p>'
+   +'<div class="tbl-wrap" style="border:0"><table class="team-now"><thead><tr><th>Person</th><th>Email for alerts</th><th>Updates</th><th>Email on</th><th></th></tr></thead><tbody>'
+   +list.map(u=>{const n=ntOf(u);return '<tr><td><span style="display:flex;gap:8px;align-items:center;white-space:nowrap">'+av(u)+esc(u.name)+'</span></td><td class="mono" style="font-size:12.5px">'+esc(n.email||u.email||'-')+'</td><td class="muted" style="font-size:12.5px">'+(n.ev.length>=EVS.length?'Everything':n.ev.length+' of '+EVS.length)+'</td><td>'+sw(u,!!n.mail)+'</td><td><button class="btn sm" data-act="ntEdit" data-u="'+u.id+'">'+ic('edit',13)+'Edit</button></td></tr>'}).join('')
+   +'</tbody></table></div>'+(adm?'<div class="foot" style="justify-content:flex-start;margin-top:10px"><button class="btn sm" data-act="ntAllOn">'+ic('check',13)+'Turn email on for everyone</button></div>':'')+'</div>';
   if(adm)h+=setupPanel();
   return h;
 }
@@ -1344,32 +1349,26 @@ function setupPanel(){
   if(!S.secReq){S.secReq=1;sb.rpc('hub_secret_status').then(({data,error})=>{S.sec={};(data||[]).forEach(r=>{S.sec[r.name]=r.shown});S.secErr=error?error.message:'';if(S.view==='team')softRender()})}
   const c=S.sec||{},v=k=>esc(c[k]||''),mp=c.MAIL_PROVIDER||'brevo',wp=c.WA_PROVIDER||'meta';
   const mailOk=c.MAIL_KEY&&c.MAIL_FROM,waOk=c.WA_TOKEN&&c.WA_TEMPLATE&&(wp==='aisensy'||c.WA_PHONE_ID);
-  return '<div class="panel" style="margin-bottom:14px"><h3>Email and WhatsApp setup<small>admin only · keys are stored on the server and never shown again</small></h3>'
+  return '<div class="panel" style="margin-bottom:14px"><h3>Email sending setup<small>admin only · keys are stored on the server and never shown again</small></h3>'
    +(S.secErr?'<div class="banner">'+esc(S.secErr)+'</div>':'')
    +'<form data-form="secrets" class="setup"><fieldset><legend>'+ic('mail',15)+' Email <span class="pill '+(mailOk?'st-completed':'st-todo')+'">'+(mailOk?'Ready':'Not set up')+'</span></legend>'
    +'<label class="fld">Service<select name="MAIL_PROVIDER"><option value="brevo"'+(mp==='brevo'?' selected':'')+'>Brevo (free 300 emails a day, verify one sender email)</option><option value="resend"'+(mp==='resend'?' selected':'')+'>Resend (needs your domain verified)</option></select></label>'
    +'<label class="fld">API key<input type="password" name="MAIL_KEY" autocomplete="off" placeholder="'+(c.MAIL_KEY?'Saved '+v('MAIL_KEY')+' · paste to replace':'Paste the API key')+'"></label>'
    +'<label class="fld">Send from (email)<input type="email" name="MAIL_FROM" value="'+v('MAIL_FROM')+'" placeholder="admin@finstreeteducation.com"></label>'
    +'<label class="fld">Sender name<input type="text" name="MAIL_FROM_NAME" value="'+v('MAIL_FROM_NAME')+'" placeholder="FinStreet Marketing Hub"></label></fieldset>'
-   +'<fieldset><legend>'+ic('chat',15)+' WhatsApp <span class="pill '+(waOk?'st-completed':'st-todo')+'">'+(waOk?'Ready':'Not set up')+'</span></legend>'
-   +'<label class="fld">Service<select name="WA_PROVIDER"><option value="meta"'+(wp==='meta'?' selected':'')+'>WhatsApp Cloud API (Meta)</option><option value="aisensy"'+(wp==='aisensy'?' selected':'')+'>AiSensy</option></select></label>'
-   +'<label class="fld">'+(wp==='aisensy'?'AiSensy API key':'Access token')+'<input type="password" name="WA_TOKEN" autocomplete="off" placeholder="'+(c.WA_TOKEN?'Saved '+v('WA_TOKEN')+' · paste to replace':'Paste the token')+'"></label>'
-   +(wp==='meta'?'<label class="fld">Phone number ID<input type="text" name="WA_PHONE_ID" value="'+v('WA_PHONE_ID')+'" placeholder="From Meta: WhatsApp > API Setup"></label>':'')
-   +'<label class="fld">'+(wp==='aisensy'?'Campaign name':'Approved template name')+'<input type="text" name="WA_TEMPLATE" value="'+v('WA_TEMPLATE')+'" placeholder="task_update"></label>'
-   +(wp==='meta'?'<label class="fld">Template language<input type="text" name="WA_LANG" value="'+v('WA_LANG')+'" placeholder="en"></label>':'')
-   +'<label class="fld">Variables in the template<select name="WA_PARAMS">'+[['3','3: {{1}} person, {{2}} what happened, {{3}} task'],['1','1: the whole message in {{1}}'],['2','2: {{1}} person, {{2}} message'],['0','0: fixed text (for example hello_world)']].map(o=>'<option value="'+o[0]+'"'+((c.WA_PARAMS||'3')===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label></fieldset>'
    +'<input type="hidden" name="APP_URL" value="'+esc(location.origin)+'">'
-   +'<div class="foot" style="justify-content:flex-start;flex-wrap:wrap"><button type="submit" class="btn primary">Save settings</button><button type="button" class="btn" data-act="ntTest">'+ic('send',14)+'Send a test to me</button><span class="muted" style="font-size:12px">The test goes to your own email / WhatsApp from the table above, so switch those on first.</span></div></form>'
-   +'<details class="howto"><summary>How to get these keys</summary><p><b>Email (Brevo):</b> sign up free at brevo.com → Senders, Domains → add and verify your sender email → SMTP and API → API keys → Generate. Paste the key and the verified email above.</p><p><b>WhatsApp (Meta Cloud API):</b> developers.facebook.com → create a Business app → add WhatsApp → API Setup gives a phone number ID and a token (create a permanent token from a System User in Business settings). In WhatsApp Manager create a Utility template, for example <i>task_update</i>: “{{1}} {{2}} — {{3}}”, and wait for approval. Each team member must have WhatsApp on the number you add.</p><p><b>WhatsApp (AiSensy):</b> create an API campaign on an approved template, then paste the API key and the campaign name.</p></details></div>';
+   +'<div class="foot" style="justify-content:flex-start;flex-wrap:wrap"><button type="submit" class="btn primary">Save settings</button><button type="button" class="btn" data-act="ntTest">'+ic('send',14)+'Send a test to me</button><span class="muted" style="font-size:12px">The test goes to your own alert email from the table above.</span></div></form>'
+   +'<details class="howto"><summary>How to get these keys</summary><p><b>Email (Brevo):</b> sign up free at brevo.com → Senders, Domains → add and verify your sender email → SMTP and API → API keys → Generate. Paste the key and the verified email above.</p></details></div>';
 }
 function ntSave(u,nt){u.nt=nt;u.hasDoc=true;u.dirty=true;renderAll()}
 function ntModal(u){
   const n=ntOf(u);
   modal('<h3>Alerts for '+esc(u.name)+'</h3><form data-form="ntform" data-u="'+u.id+'" style="display:flex;flex-direction:column;gap:12px">'
-   +'<div class="two"><label class="fld">Email for alerts<input type="email" name="email" value="'+esc(n.email)+'" placeholder="'+esc(u.email||'name@example.com')+'"></label><label class="fld">WhatsApp number<input type="tel" name="phone" value="'+esc(n.phone)+'" placeholder="98765 43210 (India) or +44…"></label></div>'
-   +'<label class="ck"><input type="checkbox" name="mail"'+(n.mail?' checked':'')+'><span>Send alerts by <b>email</b></span></label><label class="ck"><input type="checkbox" name="wa"'+(n.wa?' checked':'')+'><span>Send alerts on <b>WhatsApp</b></span></label>'
+   +'<label class="fld">Email for alerts<input type="email" name="email" value="'+esc(n.email)+'" placeholder="'+esc(u.email||'name@example.com')+'"></label><input type="hidden" name="phone" value="'+esc(n.phone)+'">'+(n.wa?'<input type="hidden" name="wa" value="1">':'')
+   +'<label class="ck"><input type="checkbox" name="mail"'+(n.mail?' checked':'')+'><span>Send alerts by <b>email</b></span></label>'
+   +'<div class="addrow" style="margin:0"><button type="button" class="btn sm" data-act="evAll">Select all</button><button type="button" class="btn sm" data-act="evNone">Clear</button></div>'
    +'<div class="fld">Which updates</div><div class="checks">'+EVS.map(x=>'<label><input type="checkbox" name="ev" value="'+x[0]+'"'+(n.ev.includes(x[0])?' checked':'')+'>'+x[1]+'</label>').join('')+'</div>'
-   +'<p class="muted" style="margin:0;font-size:12.5px">Leave the email empty to use the login email ('+esc(u.email||'-')+'). Clear the number to remove WhatsApp.'+(u.role==='admin'?' Admins get these for every task.':' They get them for tasks they are assigned to, review or created.')+'</p>'
+   +'<p class="muted" style="margin:0;font-size:12.5px">Leave the email empty to use the login email ('+esc(u.email||'-')+').'+(u.role==='admin'?' Admins get these for every task.':' They get them for tasks they are assigned to, review or created.')+'</p>'
    +'<div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>');
 }
 function bulkAddModal(){
@@ -1393,9 +1392,13 @@ document.addEventListener('click',function(e){
   switch(a){
    case 'ntToggle':{const u=uById(el.dataset.u);if(!canNt(u))return;const n=ntOf(u),k=el.dataset.k;n[k]=!n[k];
      if(n[k]&&k==='wa'&&!n.phone){toast('Add a WhatsApp number first.');return ntModal(u)}
+     if(n[k]&&k==='mail'&&!n.ev.length)n.ev=EV_DEFAULT.slice();
      ntSave(u,n);toast((k==='mail'?'Email':'WhatsApp')+' alerts '+(n[k]?'on':'off')+' for '+u.name+'.');break}
    case 'ntEdit':{const u=uById(el.dataset.u);if(canNt(u))ntModal(u);break}
-   case 'ntTest':{const u=me(),n=ntOf(u);if(!n.mail&&!n.wa)return toast('Switch on email or WhatsApp for your own account in the table first.');
+   case 'evAll':$$('#modal input[name=ev]').forEach(x=>{x.checked=true});break;
+   case 'evNone':$$('#modal input[name=ev]').forEach(x=>{x.checked=false});break;
+   case 'ntAllOn':if(me().role==='admin'){activeUsers().forEach(u=>{const n=ntOf(u);n.mail=true;if(!n.ev.length)n.ev=EV_DEFAULT.slice();u.nt=n;u.hasDoc=true;u.dirty=true});renderAll();toast('Email alerts are on for everyone.')}break;
+   case 'ntTest':{const u=me(),n=ntOf(u);if(!n.mail)return toast('Switch on email for your own account in the table first.');
      const id='n'+uid();S.testN=id;sb.from('hub_docs').insert({kind:'notif',id:id,doc:{to:S.me,from:S.me,type:'task',ev:'test',tid:'',tn:'',title:'',ch:'',tx:'sent a test alert from the Marketing Hub',at:new Date().toISOString(),read:true}}).then(({error})=>toast(error?'Test failed: '+error.message:'Test sent. The result shows here in a few seconds.'));break}
    case 'bulkAdd':bulkAddModal();break;
    case 'selMode':S.layout='list';renderMain();toast('Tick the boxes on the left, then press Delete selected.');break;

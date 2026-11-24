@@ -544,3 +544,4 @@ tr.selr td{background:var(--accent-soft)}
 .howto summary{cursor:pointer;color:var(--accent);font-weight:600}
 .howto p{margin:8px 0}
 .dl{font-weight:600}.dl.ok{color:var(--ok)}.dl.bad{color:var(--danger)}
+.ty-chat{color:var(--accent)}
