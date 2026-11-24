@@ -11,11 +11,12 @@ export default async function Home() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const [meRes, peopleRes, docsRes, msgRes] = await Promise.all([
+  const [meRes, peopleRes, docsRes, msgRes, notifRes] = await Promise.all([
     supabase.from('profiles').select('id, full_name, email, role').eq('id', user.id).maybeSingle(),
     supabase.from('profiles').select('id, full_name, email, role'),
-    supabase.from('hub_docs').select('kind, id, doc').neq('kind', 'msg').limit(20000),
+    supabase.from('hub_docs').select('kind, id, doc').not('kind', 'in', '(msg,notif)').limit(20000),
     supabase.from('hub_docs').select('kind, id, doc').eq('kind', 'msg').order('created_at', { ascending: false }).limit(800),
+    supabase.from('hub_docs').select('kind, id, doc').eq('kind', 'notif').eq('doc->>to', user.id).order('created_at', { ascending: false }).limit(200),
   ])
 
   if (docsRes.error) {
@@ -42,7 +43,7 @@ export default async function Home() {
       meId={user.id}
       meName={me?.full_name || user.email}
       meRole={me?.role || 'member'}
-      data={{ profiles, docs: [...(docsRes.data ?? []), ...(msgRes.data ?? [])] }}
+      data={{ profiles, docs: [...(docsRes.data ?? []), ...(msgRes.data ?? [])], notifs: notifRes.data ?? [] }}
       maxMb={Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB) || 50}
     />
   )

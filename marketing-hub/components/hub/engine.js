@@ -77,16 +77,17 @@ const hueOf=k=>{let h=0;for(let i=0;i<k.length;i++)h=(h*31+k.charCodeAt(i))>>>0;
 const users=[];
 let spaces=[],folders=[],tasks=[],entries=[],lib=[],channels=[],messages=[],campaigns=[];
 const timers={};
+let notifs=[];const marks={};
 let tn=100;
 function T(sp,ym,title,st,pri,as,rv,s,d,x){
-  const t=Object.assign({id:'',n:++tn,sp:sp,fo:sp+'-'+ym,title:title,st:st,pri:pri,as:Array.isArray(as)?as:(as?[as]:[]),rv:rv||'',start:s,due:d,brief:'',tags:[],subs:[],check:[],files:[],drive:'',vlinks:[],fields:{},comments:[],log:[],est:0,rev:0,recurring:false,done:'',camp:'',by:ctx.meId,created:new Date().toISOString()},x||{});
+  const t=Object.assign({id:'',n:++tn,sp:sp,fo:sp+'-'+ym,title:title,st:st,pri:pri,as:Array.isArray(as)?as:(as?[as]:[]),rv:rv||'',start:s,due:d,post:'',brief:'',tags:[],subs:[],check:[],files:[],drive:'',vlinks:[],fields:{},comments:[],log:[],est:0,rev:0,recurring:false,done:'',camp:'',by:ctx.meId,created:new Date().toISOString()},x||{});
   t.id='t'+uid();return t;
 }
 const tByN=n=>tasks.find(t=>t.n===n);
 const M=(ch,u,t,tx,x)=>Object.assign({id:'m'+uid(),ch:ch,u:u,t:t,at:new Date().toISOString(),tx:tx,media:null,react:{},pin:false,reply:null},x||{});
 
 /* ---------- state ---------- */
-const S={seen:{},me:ctx.meId,view:'dashboard',sp:'all',fo:'all',layout:'board',q:'',fa:'all',fp:'all',dsp:'all',dpe:'all',rm:CUR_YM,rby:'person',ch:'c-all',reply:null,drawer:null,tab:'comments',pend:null,draft:{},chatDraft:'',ls:'all',lst:'all',timer:null,bell:false,chatOpen:false,typing:null,flags:{wa:false,drive:true,yt:false,cal:false},invites:[],uploading:{},cst:'all',user:false,rec:null};
+const S={seen:{},me:ctx.meId,view:'dashboard',sp:'all',fo:'all',layout:'board',q:'',fa:'all',fp:'all',dsp:'all',dpe:'all',rm:CUR_YM,rby:'person',ch:'c-all',reply:null,drawer:null,tab:'comments',pend:null,draft:{},chatDraft:'',ls:'all',lst:'all',timer:null,bell:false,chatOpen:false,typing:null,flags:{wa:false,drive:true,yt:false,cal:false},invites:[],uploading:{},cst:'all',user:false,rec:null,sort:'smart',fown:'all',ntab:'all',cm:CUR_YM,csp:'all',cty:'both',briefEdit:{},sel:{}};
 const me=()=>users.find(u=>u.id===S.me)||{id:S.me,name:ctx.meName||'Me',title:'',role:ctx.meRole||'member',hue:hueOf(S.me),sp:'all'};
 const uById=id=>users.find(u=>u.id===id)||{id:id,name:'Former member',hue:0,role:'member',sp:'all'};
 const activeUsers=()=>users.filter(u=>u.active!==false);
@@ -107,11 +108,19 @@ const entVis=e=>me().role!=='external'||e.uid===S.me;
 const elapsed=()=>S.timer?(Date.now()-S.timer.start)/1000:0;
 const av=(u,lg)=>'<span class="av'+(lg?' lg':'')+(u.role==='external'?' ext':'')+'" style="--h:'+u.hue+'" title="'+esc(u.name)+'">'+esc(String(u.name||'?').split(/\s+/).filter(Boolean).slice(0,2).map(x=>x[0].toUpperCase()).join(''))+'</span>';
 const avs=ids=>'<span class="avs">'+ids.map(i=>av(uById(i))).join('')+'</span>';
-const fmtText=s=>esc(s).replace(/@([A-Za-z]+)/g,(m,n)=>users.some(u=>first(u).toLowerCase()===n.toLowerCase())?'<span class="mention">'+m+'</span>':m);
+// clickable links: turn http(s):// and www. text into links (used in briefs, comments and chat)
+function linkify(html){
+  const keep=[];
+  html=html.replace(/(\bhttps?:\/\/[^\s<]+|\bwww\.[^\s<]+)/gi,u=>{let tail='';while(/[.,;:!?)\]'"]$/.test(u)&&!/\([^)]*\)$/.test(u)){tail=u.slice(-1)+tail;u=u.slice(0,-1)}const href=/^www\./i.test(u)?'https://'+u:u;keep.push('<a class="lnk" href="'+href+'" target="_blank" rel="noopener noreferrer" data-stop="1">'+u+'</a>');return '\u0000'+(keep.length-1)+'\u0000'+tail});
+  return {h:html,back:s=>s.replace(/\u0000(\d+)\u0000/g,(m,i)=>keep[+i])};
+}
+const fmtText=s=>{const L=linkify(esc(s));return L.back(L.h.replace(/@([A-Za-z]+)/g,(m,n)=>users.some(u=>first(u).toLowerCase()===n.toLowerCase())?'<span class="mention">'+m+'</span>':m))};
+const richText=s=>fmtText(s).replace(/\n/g,'<br>');
 const host=u=>{try{return new URL(u).hostname.replace('www.','')}catch(e){return u}};
 const detect=u=>/youtube\.com|youtu\.be/.test(u)?'youtube':/drive\.google/.test(u)?'drive':/docs\.google/.test(u)?'doc':/spotify|podcasts\.apple/.test(u)?'podcast':/vimeo/.test(u)?'vimeo':'other';
 const ltName={youtube:'YouTube',drive:'Drive',doc:'Doc',podcast:'Podcast',vimeo:'Vimeo',other:'Link'};
-const logA=(t,tx)=>t.log.unshift({u:S.me,tx:tx,at:nowS()});
+// every logged step on a task also notifies the people on it and the admins
+const logA=(t,tx,type,extra)=>{t.log.unshift({u:S.me,tx:tx,at:nowS()});if(type!==false)notifyTask(t,type||'task',tx,extra)};
 function toast(m){const d=document.createElement('div');d.className='toast';d.textContent=m;$('#toasts').appendChild(d);setTimeout(()=>d.remove(),3400)}
 function deny(m){toast(m);renderDrawer();return false}
 const sizeStr=b=>b>1e9?(b/1e9).toFixed(1)+' GB':b>1e6?Math.round(b/1e6)+' MB':Math.max(1,Math.round(b/1e3))+' KB';
@@ -123,7 +132,11 @@ function renderSide(){
   const nav=(v,label,icon)=>'<button class="nav'+(S.view===v&&!(v==='tasks')?' on':'')+'" data-act="nav" data-v="'+v+'">'+ic(icon,17)+'<span>'+label+'</span></button>';
   let h='<div class="brand">'+(ctx.logo?'<div class="logo img"><img src="'+ctx.logo+'" alt="FinStreet"></div>':'<div class="logo">FS</div>')+'<div><b>FinStreet Marketing</b><span>FinStreet Education · Workspace</span></div></div>';
   h+=nav('dashboard','Dashboard','grid');
+  {const un=notifs.filter(n=>!n.read).length;h+='<button class="nav'+(S.view==='inbox'?' on':'')+'" data-act="nav" data-v="inbox">'+ic('mail',17)+'<span>Inbox</span>'+(un?'<span class="n">'+un+'</span>':'')+'</button>'}
   h+='<button class="nav'+(tv&&S.sp==='all'&&S.fa===S.me?' on':'')+'" data-act="mine">'+ic('tasks',17)+'<span>My tasks</span><span class="n">'+visTasks().filter(t=>t.as.includes(S.me)&&!CLOSED.includes(t.st)).length+'</span></button>';
+  {const mk=myMarks().filter(id=>{const x=tById(id);return x&&visTasks().includes(x)}).length;h+='<button class="nav'+(tv&&S.fx==='marked'?' on':'')+'" data-act="kpi" data-v="marked">'+ic('star',17)+'<span>Marked</span>'+(mk?'<span class="n">'+mk+'</span>':'')+'</button>'}
+  {const ap=reviewQueue().length;if(ap||can('approve'))h+=nav('approvals','Approvals','check').replace('</span></button>','</span>'+(ap?'<span class="n warn">'+ap+'</span>':'')+'</button>')}
+  h+=nav('calendar','Calendar','cal');
   if(can('chat'))h+=nav('chat','Team chat','chat');
   h+=nav('library','Video library','video');
   if(role!=='external')h+=nav('campaigns','Campaigns','target');
@@ -145,45 +158,48 @@ function renderSide(){
   h+='<div class="side-note"><div class="me-row">'+av(me())+'<span><b>'+esc(me().name)+'</b><small>'+ROLES[me().role]+'</small></span><button class="ibtn sm" data-act="logout" title="Log out" aria-label="Log out">'+ic('logout',15)+'</button></div>FinStreet Education · Marketing Hub</div>';
   $('#side').innerHTML=h;
 }
-function notifs(){
+function alerts(){
   const m=me(),out=[];
   visTasks().forEach(t=>{
-    if(t.st==='review'&&(t.rv===S.me||(!t.rv&&t.by===S.me)))out.push({id:t.id,h:'Approval needed',tx:t.title});
+    if(t.st==='review'&&isMyReview(t))out.push({id:t.id,h:'Approval needed',tx:'#'+t.n+' '+t.title});
     if(isOver(t)&&t.as.includes(S.me))out.push({id:t.id,h:'Overdue',tx:t.title});
-    t.comments.forEach(c=>{if(c.u!==S.me&&new RegExp('@'+first(m)+'\\b','i').test(c.tx))out.push({id:t.id,h:uById(c.u).name+' mentioned you',tx:t.title})});
   });
   return out;
 }
 function renderTop(){
-  const nf=notifs();
+  const nf=alerts();
   let h='';
   h+='<span id="saveState" class="savestate">All changes saved</span>';
-  if(S.timer&&tById(S.timer.tid)){const t=tById(S.timer.tid);h+='<div class="tpill"><button class="t-open" data-act="open" data-id="'+t.id+'"><span class="dotlive"></span><span class="t-name">#'+t.n+' '+esc(t.title)+'</span><span class="mono" data-pill>'+clock(elapsed())+'</span></button><button class="t-stop" data-act="stopt" aria-label="Stop timer">'+ic('stop',12)+'</button></div>'}
+  if(S.timer&&tById(S.timer.tid)){const t=tById(S.timer.tid);h+='<div class="tpill live" title="Timer running"><button class="t-open" data-act="open" data-id="'+t.id+'"><span class="dotlive"></span><span class="t-name">#'+t.n+' '+esc(t.title)+'</span><span class="mono" data-pill>'+clock(elapsed())+'</span></button><button class="t-stop" data-act="stopt" aria-label="Stop timer">'+ic('stop',12)+'</button></div>'}
   h+='<span class="whoami">'+av(me())+'<span>'+esc(first(me()))+'</span></span>';
-  h+='<div style="position:relative"><button class="ibtn" data-act="bell" aria-label="Notifications">'+ic('bell',17)+(nf.length?'<span class="badge">'+nf.length+'</span>':'')+'</button>';
-  if(S.bell)h+='<div class="pop"><h5>Notifications</h5>'+(nf.length?nf.slice(0,8).map(n=>'<button data-act="open" data-id="'+n.id+'"><b>'+esc(n.h)+'</b><small>'+esc(n.tx)+'</small></button>').join(''):'<div class="empty">Nothing needs you right now.</div>')+'</div>';
+  const un=notifs.filter(n=>!n.read),bc=un.length+nf.length;
+  h+='<div style="position:relative"><button class="ibtn'+(un.length?' ring':'')+'" data-act="bell" aria-label="Notifications">'+ic('bell',17)+(bc?'<span class="badge">'+(bc>99?'99+':bc)+'</span>':'')+'</button>';
+  if(S.bell)h+='<div class="pop npop"><div class="np-h"><h5>Notifications</h5>'+(un.length?'<button class="lnkbtn" data-act="readAll">Mark all read</button>':'')+'</div>'
+    +(nf.length?'<div class="np-alerts">'+nf.slice(0,5).map(n=>'<button data-act="open" data-id="'+n.id+'" class="alert"><b>'+esc(n.h)+'</b><small>'+esc(n.tx)+'</small></button>').join('')+'</div>':'')
+    +(notifs.length?notifs.slice(0,10).map(nRow).join(''):(nf.length?'':'<div class="empty">Nothing new. Updates on your tasks show up here.</div>'))
+    +'<div class="np-f"><button class="btn sm" data-act="nav" data-v="inbox">Open inbox</button>'+(pushState()==='default'?'<button class="btn sm" data-act="pushOn">'+ic('bell',13)+'Desktop alerts</button>':'')+'</div></div>';
   h+='</div><button class="ibtn" data-act="keys" aria-label="Keyboard shortcuts" title="Shortcuts (?)">'+ic('key',17)+'</button><button class="ibtn" data-act="theme" aria-label="Toggle dark mode">'+ic('moon',17)+'</button>';
   $('#topR').innerHTML=h;
-  const T={dashboard:'Dashboard',tasks:S.sp==='all'?'Tasks':spById(S.sp).short||spById(S.sp).name,chat:'Team chat',library:'Video library',time:'Time and reports',team:'Team and access',campaigns:'Campaigns'};
+  const T={dashboard:'Dashboard',tasks:S.sp==='all'?'Tasks':spById(S.sp).short||spById(S.sp).name,chat:'Team chat',library:'Video library',time:'Time and reports',team:'Team and access',campaigns:'Campaigns',inbox:'Inbox',approvals:'Approvals',calendar:'Calendar'};
   $('#topTitle').textContent=T[S.view];
 }
 
 /* ---------- tasks views ---------- */
 function filtered(){
   const q=S.q.trim().toLowerCase();
-  return visTasks().filter(t=>(!S.fx||(S.fx==='overdue'?isOver(t):S.fx==='review'?t.st==='review':!CLOSED.includes(t.st)))&&(S.sp==='all'||t.sp===S.sp)&&(S.fo==='all'||t.fo===S.fo)&&(S.fa==='all'||t.as.includes(S.fa))&&(S.fp==='all'||t.pri===S.fp)&&(!q||(t.title+' '+t.tags.join(' ')+' '+t.brief).toLowerCase().includes(q)));
+  return sortTasks(visTasks().filter(t=>fxOk(t)&&(S.fown==='all'||t.by===S.fown)&&(S.sp==='all'||t.sp===S.sp)&&(S.fo==='all'||t.fo===S.fo)&&(S.fa==='all'||t.as.includes(S.fa))&&(S.fp==='all'||t.pri===S.fp)&&(!q||(t.title+' '+t.tags.join(' ')+' '+t.brief).toLowerCase().includes(q))));
 }
 function card(t){
   const sp=spById(t.sp),sd=t.subs.filter(s=>s.d).length,od=isOver(t),run=S.timer&&S.timer.tid===t.id;
   return '<div class="card" draggable="true" data-act="open" data-id="'+t.id+'" tabindex="0">'
-   +'<div class="c-top"><span class="c-no">#'+t.n+'</span>'+(S.sp==='all'?'<span class="c-sp"><i class="dot" style="background:'+sp.color+'"></i>'+esc(sp.short||sp.name)+'</span>':'')+(run?'<span class="live"><span class="dotlive"></span>Timing</span>':'')+'</div>'
-   +'<div class="c-title">'+esc(t.title)+'</div>'
+   +'<div class="c-top"><span class="c-no">#'+t.n+'</span>'+(S.sp==='all'?'<span class="c-sp"><i class="dot" style="background:'+sp.color+'"></i>'+esc(sp.short||sp.name)+'</span>':'')+(isNew(t)?'<span class="newb">New</span>':'')+(run?'<span class="live"><span class="dotlive"></span>Timing</span>':'')+starBtn(t)+'</div>'
+   +'<div class="c-title">'+esc(t.title)+'</div>'+(t.st==='review'&&t.rv?'<div class="c-rv">'+ic('check',12)+'Reviewer: '+esc(first(uById(t.rv)))+'</div>':'')
    +'<div class="c-meta">'+priTag(t.pri)+'<span class="due'+(od?' over':'')+'">'+(od?'Overdue · ':'Due ')+dd(t.due)+'</span></div>'
    +'<div class="c-foot">'+avs(t.as)+'<span class="ct">'+(t.subs.length?'<span title="Subtasks">'+ic('sub',13)+sd+'/'+t.subs.length+'</span>':'')+(t.files.length+t.vlinks.length+(t.drive?1:0)?'<span title="Files and links">'+ic('clip',13)+(t.files.length+t.vlinks.length+(t.drive?1:0))+'</span>':'')+(t.comments.length?'<span title="Comments">'+ic('chat',13)+t.comments.length+'</span>':'')+'</span></div></div>';
 }
 function vTasks(){
   const sp=S.sp==='all'?null:spById(S.sp), ts=filtered();
-  let h='<div class="pagehead"><div class="grow"><h2>'+(sp?esc(sp.name):'All spaces')+'</h2><p>'+(S.fx?'<span class="pill st-review" style="margin-right:6px">'+({open:'Open tasks',overdue:'Overdue',review:'Waiting for approval'})[S.fx]+' <button data-act="clearFx" style="border:0;background:none;padding:0 0 0 4px;cursor:pointer;color:inherit" aria-label="Clear filter">✕</button></span>':'')+ts.length+' tasks'+(S.fo!=='all'?' in '+esc(folders.find(f=>f.id===S.fo).name):'')+(S.q?' matching “'+esc(S.q)+'”':'')+'</p></div>'
+  let h='<div class="pagehead"><div class="grow"><h2>'+(sp?esc(sp.name):'All spaces')+'</h2><p>'+(S.fx?'<span class="pill st-review" style="margin-right:6px">'+({open:'Open tasks',overdue:'Overdue',review:'Waiting for approval',marked:'Marked by you'})[S.fx]+' <button data-act="clearFx" style="border:0;background:none;padding:0 0 0 4px;cursor:pointer;color:inherit" aria-label="Clear filter">✕</button></span>':'')+ts.length+' tasks'+(S.fo!=='all'?' in '+esc(folders.find(f=>f.id===S.fo).name):'')+(S.q?' matching “'+esc(S.q)+'”':'')+'</p></div>'
    +'<div class="seg" role="group" aria-label="Layout"><button data-act="layout" data-v="board" class="'+(S.layout==='board'?'on':'')+'">Board</button><button data-act="layout" data-v="list" class="'+(S.layout==='list'?'on':'')+'">List</button></div>'
    +(sp&&can('manage')?'<button class="btn" data-act="editSpace">'+ic('edit',15)+'Edit space</button>':'')
    +'<button class="btn" data-act="exportTasks" title="Download these tasks as CSV">'+ic('down',15)+'Export</button>'
@@ -191,12 +207,14 @@ function vTasks(){
   h+='<div class="bar">';
   if(sp){h+='<div class="chips"><button class="chip'+(S.fo==='all'?' on':'')+'" data-act="folder" data-id="all">All months</button>'+folders.filter(f=>f.sp===sp.id).map(f=>'<button class="chip'+(S.fo===f.id?' on':'')+'" data-act="folder" data-id="'+f.id+'">'+esc(f.name)+'</button>').join('')+((can('manage')||me().role==='member')?'<button class="chip add" data-act="newMonth">+ Month</button>':'')+'</div>'}
   h+='<span class="sp-gap"></span><select data-f="fa" aria-label="Filter by person"><option value="all">Everyone</option>'+activeUsers().slice().sort((a,b)=>a.name.localeCompare(b.name)).map(u=>'<option value="'+u.id+'"'+(S.fa===u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>'
-   +'<select data-f="fp" aria-label="Filter by priority"><option value="all">Any priority</option>'+PRI.map(p=>'<option value="'+p+'"'+(S.fp===p?' selected':'')+'>'+cap(p)+'</option>').join('')+'</select></div>';
+   +'<select data-f="fp" aria-label="Filter by priority"><option value="all">Any priority</option>'+PRI.map(p=>'<option value="'+p+'"'+(S.fp===p?' selected':'')+'>'+cap(p)+'</option>').join('')+'</select>'
+   +'<select data-f="fown" aria-label="Filter by owner"><option value="all">Any owner</option><option value="'+S.me+'"'+(S.fown===S.me?' selected':'')+'>Created by me</option>'+activeUsers().filter(u=>u.id!==S.me).sort((a,b)=>a.name.localeCompare(b.name)).map(u=>'<option value="'+u.id+'"'+(S.fown===u.id?' selected':'')+'>Owner: '+esc(u.name)+'</option>').join('')+'</select>'
+   +'<select data-f="sort" aria-label="Sort tasks"><option value="smart"'+(S.sort==='smart'?' selected':'')+'>Sort: Priority, newest first</option><option value="new"'+(S.sort==='new'?' selected':'')+'>Sort: Newest first</option><option value="due"'+(S.sort==='due'?' selected':'')+'>Sort: Due date</option></select></div>'+bulkBar(ts);
   if(S.layout==='board'){
     h+='<div class="board">'+ST.map(s=>{const c=ts.filter(t=>t.st===s.k);return '<section class="col" data-st="'+s.k+'" aria-label="'+s.n+'"><div class="col-h"><span class="pill st-'+s.k+'">'+s.n+'</span><b>'+c.length+'</b></div>'+(c.length?c.map(card).join(''):'<div class="empty">'+(s.k==='todo'&&can('create')?'<button class="btn sm" data-act="newTask">'+ic('plus',13)+'Add task</button>':'Drop a task here')+'</div>')+'</section>'}).join('')+'</div>';
   }else{
-    h+='<div class="tbl-wrap"><table><thead><tr><th>#</th><th>Task</th>'+(S.sp==='all'?'<th>Space</th>':'')+'<th>Status</th><th>Assignee</th><th>Due</th><th>Priority</th><th class="num">Time</th><th class="num">Subtasks</th></tr></thead><tbody>'
-     +(ts.length?ts.map(t=>{const sp2=spById(t.sp),sd=t.subs.filter(s=>s.d).length;return '<tr class="click" data-act="open" data-id="'+t.id+'"><td class="mono muted">'+t.n+'</td><td class="t-title">'+esc(t.title)+'</td>'+(S.sp==='all'?'<td><span class="c-sp" style="display:inline-flex;gap:6px;align-items:center;white-space:nowrap"><i class="dot" style="background:'+sp2.color+'"></i>'+esc(sp2.short||sp2.name)+'</span></td>':'')+'<td>'+stPill(t.st)+'</td><td>'+avs(t.as)+'</td><td class="due'+(isOver(t)?' over':'')+'" style="white-space:nowrap">'+dd(t.due)+'</td><td>'+priTag(t.pri)+'</td><td class="num mono">'+hm(taskSecs(t.id))+'</td><td class="num">'+(t.subs.length?sd+'/'+t.subs.length:'-')+'</td></tr>'}).join(''):'<tr><td colspan="9"><div class="empty">No tasks match these filters.</div></td></tr>')
+    const delOk=ts.filter(canDelT);h+='<div class="tbl-wrap"><table><thead><tr>'+(delOk.length?'<th class="selc"><input type="checkbox" data-act="selAll" aria-label="Select all"'+(delOk.length&&delOk.every(x=>S.sel[x.id])?' checked':'')+'></th>':'')+'<th>#</th><th>Task</th>'+(S.sp==='all'?'<th>Space</th>':'')+'<th>Status</th><th>Assignee</th><th>Reviewer</th><th>Due</th><th>Priority</th><th class="num">Time</th><th class="num">Subtasks</th></tr></thead><tbody>'
+     +(ts.length?ts.map(t=>{const sp2=spById(t.sp),sd=t.subs.filter(s=>s.d).length;return '<tr class="click'+(S.sel[t.id]?' selr':'')+'" data-act="open" data-id="'+t.id+'">'+(delOk.length?'<td class="selc">'+(canDelT(t)?'<input type="checkbox" data-act="selT" data-id="'+t.id+'" aria-label="Select #'+t.n+'"'+(S.sel[t.id]?' checked':'')+'>':'')+'</td>':'')+'<td class="mono muted">'+t.n+'</td><td class="t-title">'+starBtn(t)+esc(t.title)+(isNew(t)?' <span class="newb">New</span>':'')+'</td>'+(S.sp==='all'?'<td><span class="c-sp" style="display:inline-flex;gap:6px;align-items:center;white-space:nowrap"><i class="dot" style="background:'+sp2.color+'"></i>'+esc(sp2.short||sp2.name)+'</span></td>':'')+'<td>'+stPill(t.st)+'</td><td>'+avs(t.as)+'</td><td>'+(t.rv?av(uById(t.rv)):'<span class="muted">-</span>')+'</td><td class="due'+(isOver(t)?' over':'')+'" style="white-space:nowrap">'+dd(t.due)+'</td><td>'+priTag(t.pri)+'</td><td class="num mono">'+hm(taskSecs(t.id))+'</td><td class="num">'+(t.subs.length?sd+'/'+t.subs.length:'-')+'</td></tr>'}).join(''):'<tr><td colspan="11"><div class="empty">No tasks match these filters.</div></td></tr>')
      +'</tbody></table></div>';
   }
   return h;
@@ -220,8 +238,9 @@ function vDash(){
    +'<div class="kpi click'+(over.length?' bad':'')+'" data-act="kpi" data-v="overdue" title="Show overdue tasks"><span>Overdue</span><b>'+over.length+'</b><small>past due, not approved</small></div>'
    +'<div class="kpi click" data-act="kpi" data-v="review" title="Show tasks waiting for approval"><span>Waiting for approval</span><b>'+pend.length+'</b><small>in Review Required</small></div>'
    +'<div class="kpi"><span data-act="nav" data-v="time" style="cursor:pointer">Hours logged, '+MN[+CUR_YM.slice(5)-1]+'</span><b>'+hrs(octS)+'</b><small>'+ents.filter(e=>e.date.slice(0,7)===CUR_YM).length+' time entries</small></div></div>';
-  const mine=visTasks().filter(t=>t.as.includes(S.me)&&!CLOSED.includes(t.st)&&t.st!=='approved').sort((a,b)=>a.due<b.due?-1:1);
+  const mine=sortTasks(visTasks().filter(t=>t.as.includes(S.me)&&!CLOSED.includes(t.st)&&t.st!=='approved'),'smart');
   h+='<div class="panel" style="margin-bottom:14px"><h3>My work<small>'+mine.length+' open · click a task to open it</small></h3>'+(mine.length?mine.slice(0,6).map(t=>{const sp=spById(t.sp);return '<div class="li" data-act="open" data-id="'+t.id+'"><i class="dot" style="background:'+sp.color+'"></i><div class="tt"><b>#'+t.n+' '+esc(t.title)+'</b><small>'+esc(sp.short||sp.name)+' · '+stN(t.st)+'</small></div>'+(S.timer&&S.timer.tid===t.id?'<span class="live"><span class="dotlive"></span>Timing</span>':'<button class="btn sm" data-act="startt" data-id="'+t.id+'" data-stop2="1">'+ic('play',12)+'Start</button>')+'<span class="when'+(isOver(t)?' over':'')+'">'+(isOver(t)?diff(t.due,TODAY)+'d late':'Due '+dd(t.due))+'</span></div>'}).join('')+(mine.length>6?'<button class="btn sm" data-act="mine" style="margin-top:8px">See all '+mine.length+'</button>':''):'<div class="empty">Nothing assigned to you. '+(can('create')?'<button class="btn sm" data-act="newTask">'+ic('plus',13)+'New task</button>':'')+'</div>')+'</div>';
+  if(can('manage'))h+=adminPanels(ts);
   h+='<div class="grid g2"><div class="panel"><h3>Tasks by status<small>'+ts.length+' tasks</small></h3>'+ST.map(s=>{const c=ts.filter(t=>t.st===s.k).length;return '<div class="hb"><span class="lbl"><span class="pill st-'+s.k+'">'+s.n+'</span></span><div class="trk"><i style="width:'+(c/sm*100)+'%;background:var(--st-'+s.k+')"></i></div><b>'+c+'</b></div>'}).join('')+'</div>';
   h+='<div class="panel"><h3>Tasks by space<small>solid = approved or completed</small></h3>'+vs.map(s=>{const a=ts.filter(t=>t.sp===s.id),d=a.filter(t=>t.st==='approved'||t.st==='completed').length,mx=Math.max.apply(null,vs.map(x=>ts.filter(t=>t.sp===x.id).length).concat([1]));if(!a.length)return '';return '<div class="hb"><span class="lbl"><i class="dot" style="background:'+s.color+'"></i><span>'+esc(s.short||s.name)+'</span></span><div class="trk" style="width:'+(a.length/mx*100)+'%"><i style="width:'+(d/a.length*100)+'%;background:'+s.color+'"></i><i style="width:'+((a.length-d)/a.length*100)+'%;background:'+s.color+';opacity:.3"></i></div><b>'+d+'/'+a.length+'</b></div>'}).join('')+'</div></div>';
   const wl=activeUsers().map(u=>({u:u,o:ts.filter(t=>t.as.includes(u.id)&&!CLOSED.includes(t.st)).length,s:ents.filter(e=>e.uid===u.id&&e.date.slice(0,7)===CUR_YM).reduce((a,e)=>a+e.secs,0)})).filter(x=>x.o>0);
@@ -282,6 +301,7 @@ function sendMsg(x){
   const m=M(S.ch,S.me,nowT(),(x&&x.tx)||'',x||{});
   if(S.reply){m.reply=S.reply;S.reply=null}
   messages.push(m);S.seen[S.ch]=(S.seen[S.ch]||0)+1;
+  if(m.tx){const ids=mentionIds(m.tx),c=channels.find(x=>x.id===m.ch);if(ids.length&&c)notifyUsers(ids,'mention',null,'mentioned you in '+(c.kind==='dm'?'a direct message':c.name)+': '+m.tx.slice(0,160),{ch:c.id})}
   S.chatDraft='';renderMain();
 }
 
@@ -388,13 +408,15 @@ function dTask(t){
   const sd=t.subs.filter(s=>s.d).length,cd=t.check.filter(s=>s.d).length;
   const es=entries.filter(e=>e.tid===t.id&&entVis(e)).slice().sort((a,b)=>a.date<b.date?1:-1);
   const people=activeUsers().filter(u=>u.sp==='all'||!Array.isArray(u.sp)||u.sp.includes(t.sp));
-  const canDel=can('manage')||t.by===S.me;
-  let h='<div class="dh"><div class="crumb"><i class="dot" style="background:'+sp.color+'"></i>'+esc(sp.name)+' <span>/</span> '+esc(fo.name)+' <span>/</span> <span class="mono" style="opacity:1">#'+t.n+'</span></div>'+(canDel?'<button class="ibtn" data-act="delTask" aria-label="Delete task" title="Delete task">'+ic('trash',16)+'</button>':'')+'<button class="ibtn" data-act="closeDrawer" aria-label="Close">'+ic('x')+'</button></div><div class="dbody">';
+  const canDel=canDelT(t);
+  let h='<div class="dh"><div class="crumb"><i class="dot" style="background:'+sp.color+'"></i>'+esc(sp.name)+' <span>/</span> '+esc(fo.name)+' <span>/</span> <span class="mono" style="opacity:1">#'+t.n+'</span></div>'+starBtn(t,1)+(canDel?'<button class="ibtn" data-act="delTask" aria-label="Delete task" title="Delete task">'+ic('trash',16)+'</button>':'')+'<button class="ibtn" data-act="closeDrawer" aria-label="Close">'+ic('x')+'</button></div><div class="dbody">';
   h+='<input class="d-title" data-f="title" value="'+esc(t.title)+'"'+dis+' aria-label="Task title">';
   h+=actionBar(t);
   h+='<div class="props"><label class="fld">Status<select data-f="st">'+ST.map(s=>'<option value="'+s.k+'"'+(t.st===s.k?' selected':'')+'>'+s.n+'</option>').join('')+'</select></label>'
    +'<label class="fld">Priority<select data-f="pri"'+dis+'>'+PRI.map(p=>'<option value="'+p+'"'+(t.pri===p?' selected':'')+'>'+cap(p)+'</option>').join('')+'</select></label>'
    +'<label class="fld">Start date<input type="date" data-f="start" value="'+t.start+'"'+dis+'></label><label class="fld">Due date<input type="date" data-f="due" value="'+t.due+'"'+dis+'></label>'
+   +'<label class="fld">Posting date<input type="date" data-f="post" value="'+esc(t.post||'')+'"'+dis+'></label>'
+   +'<label class="fld">Owner<select data-f="by"'+(can('manage')||t.by===S.me?'':' disabled')+'>'+(t.by&&!users.some(u=>u.id===t.by)?'<option value="'+esc(t.by)+'" selected>Former member</option>':'')+activeUsers().map(u=>'<option value="'+u.id+'"'+(t.by===u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></label>'
    +'<label class="fld">Reviewer<select data-f="rv"'+dis+'><option value="">No reviewer</option>'+activeUsers().filter(u=>['admin','manager','reviewer'].includes(u.role)).map(u=>'<option value="'+u.id+'"'+(t.rv===u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></label>'
    +'<label class="fld">Estimate, hours<input type="number" min="0" step="0.5" data-f="est" value="'+t.est+'"'+dis+'></label>'
    +'<label class="fld">Monthly folder<select data-f="fo"'+dis+'>'+folders.filter(f=>f.sp===t.sp).sort((a,b)=>a.ym<b.ym?-1:1).map(f=>'<option value="'+f.id+'"'+(t.fo===f.id?' selected':'')+'>'+esc(f.name)+'</option>').join('')+'</select></label>'
@@ -403,8 +425,11 @@ function dTask(t){
   h+='<div class="sec"><h4>Assignees</h4><div class="asg">'+t.as.map(i=>{const u=uById(i);return '<span class="tag">'+av(u)+esc(u.name)+(ed?'<button data-act="rmAs" data-u="'+i+'" aria-label="Remove '+esc(u.name)+'">'+ic('x',13)+'</button>':'')+'</span>'}).join('')+(ed?'<select data-f="addAs" aria-label="Add assignee" style="width:auto"><option value="">+ Add person</option>'+people.filter(u=>!t.as.includes(u.id)).map(u=>'<option value="'+u.id+'">'+esc(u.name)+(u.role==='external'?' (external)':'')+'</option>').join('')+'</select>':'')+'</div></div>';
   h+='<div class="sec"><h4>Tags</h4><div class="asg">'+t.tags.map((g,i)=>'<span class="tag">#'+esc(g)+(ed?'<button data-act="rmTag" data-i="'+i+'" aria-label="Remove tag">'+ic('x',13)+'</button>':'')+'</span>').join('')+(ed?'<input type="text" id="tagIn" placeholder="+ Add tag, press Enter" aria-label="Add tag" style="width:170px">':'')+(t.tags.length||ed?'':'<span class="muted" style="font-size:13px">No tags</span>')+'</div></div>';
   if(S.pend===t.id)h+='<div class="pendbox"><b>Changes Required needs a comment</b><textarea id="pendTx" rows="3" placeholder="Describe what needs to change"></textarea><div class="addrow" style="margin:0"><button class="btn danger" data-act="pendOk">Send and request changes</button><button class="btn" data-act="pendNo">Cancel</button></div></div>';
+  if(!run&&tw&&t.as.includes(S.me)&&t.st==='progress')h+='<div class="nudge">'+ic('clock',16)+'<span><b>Timer is not running.</b> This task is In Progress. Start the timer so your hours are tracked.</span><button class="btn sm primary" data-act="startt" data-id="'+t.id+'">'+ic('play',12)+'Start timer</button></div>';
+  if(run)h+='<div class="nudge on"><span class="dotlive"></span><span><b>Timer running</b> since '+new Date(S.timer.start).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})+'. Admins can see you are working on this.</span></div>';
   h+='<div class="timer"><div><div class="t-sub">Time on this task</div><div class="t-clock mono" data-clock="'+t.id+'">'+clock(tot+(run?elapsed():0))+'</div><div class="t-sub">'+hm(tot)+' logged'+(t.est?' of '+t.est+'h estimate':'')+'</div></div>'+(tw?'<button class="btn '+(run?'danger':'primary')+'" data-act="'+(run?'stopt':'startt')+'" data-id="'+t.id+'">'+ic(run?'stop':'play',15)+(run?'Stop':'Start timer')+'</button>':'')+(t.est?'<div class="prog'+(tot/3600>t.est?' over':'')+'"><i style="width:'+pct+'%"></i></div>':'')+'</div>';
-  h+='<div class="sec"><h4>Brief</h4><textarea data-f="brief" rows="3" placeholder="Add a brief, links and references"'+dis+'>'+esc(t.brief)+'</textarea></div>';
+  if(t.brief&&!S.briefEdit[t.id])h+='<div class="sec"><h4>Brief'+(ed?'<button class="lnkbtn" data-act="editBrief">'+ic('edit',13)+'Edit</button>':'')+'</h4><div class="brief-view">'+richText(t.brief)+'</div></div>';
+  else h+='<div class="sec"><h4>Brief'+(t.brief?'<button class="lnkbtn" data-act="doneBrief">Done</button>':'')+'</h4><textarea data-f="brief" id="briefIn" rows="4" placeholder="Add a brief, links and references. Links become clickable."'+dis+'>'+esc(t.brief)+'</textarea></div>';
   h+='<div class="sec"><h4>Subtasks<span>'+sd+'/'+t.subs.length+'</span></h4>'+t.subs.map((s,i)=>'<label class="ck'+(s.d?' done':'')+'"><input type="checkbox" data-f="subd" data-i="'+i+'"'+(s.d?' checked':'')+adis+'><span>'+esc(s.t)+'</span></label>').join('')+(asg?'<div class="addrow"><input type="text" id="subIn" placeholder="Add a subtask and press Enter" aria-label="New subtask"><button class="btn" data-act="addSub">Add</button></div>':'')+'</div>';
   h+='<div class="sec"><h4>Checklist<span>'+cd+'/'+t.check.length+'</span></h4>'+(t.check.length?'<div class="prog" style="margin:0 0 6px"><i style="width:'+(cd/t.check.length*100)+'%"></i></div>':'')+t.check.map((s,i)=>'<label class="ck'+(s.d?' done':'')+'"><input type="checkbox" data-f="chkd" data-i="'+i+'"'+(s.d?' checked':'')+adis+'><span>'+esc(s.t)+'</span></label>').join('')+(asg?'<div class="addrow"><input type="text" id="chkIn" placeholder="Add a checklist item" aria-label="New checklist item"><button class="btn" data-act="addChk">Add</button></div>':'')+'</div>';
   h+='<div class="sec"><h4>Files and Drive<span>'+(t.files.length+(t.drive?1:0))+'</span></h4>'+(t.drive?'<div class="file"><span class="lt drive">Drive</span><b>'+esc(decodeURIComponent(t.drive.split('/').pop()))+'</b><small>'+esc(host(t.drive))+'</small><a class="btn sm" href="'+esc(t.drive)+'" target="_blank" rel="noopener">Open</a>'+(asg?'<button class="x" data-act="rmDrive" aria-label="Remove Drive link">'+ic('x',14)+'</button>':'')+'</div>':'')
@@ -440,7 +465,7 @@ function renderMain(){
   queueSync();
   const m=$('#main'),st=m.scrollTop,b=$('.board'),bl=b?b.scrollLeft:0;
   const v=S.view;
-  m.innerHTML=v==='dashboard'?vDash():v==='tasks'?vTasks():v==='chat'?vChat():v==='library'?vLib():v==='time'?vTime():v==='campaigns'?vCamps():vTeam();
+  m.innerHTML=v==='dashboard'?vDash():v==='tasks'?vTasks():v==='chat'?vChat():v==='library'?vLib():v==='time'?vTime():v==='campaigns'?vCamps():v==='inbox'?vInbox():v==='approvals'?vApprovals():v==='calendar'?vCal():vTeam();
   m.scrollTop=st;const nb=$('.board');if(nb)nb.scrollLeft=bl;
   const ml=$('#msgs');if(ml)ml.scrollTop=ml.scrollHeight;
   if(v==='chat'&&S.focusChat){const t=$('#chatIn');if(t)t.focus();S.focusChat=false}
@@ -452,11 +477,12 @@ function openD(type,id){S.drawer={type:type,id:id};S.tab='comments';S.bell=false
 function startTimer(id){
   const t=tById(id);if(!can('work',t))return deny('Only people assigned to this task can track time on it.');
   if(S.timer){const p=tById(S.timer.tid);stopTimer(true);toast('Stopped the timer on #'+p.n+'. Only one timer runs at a time.')}
-  S.timer={tid:id,start:Date.now()};timers[S.me]=S.timer;logA(t,'started the timer');renderAll();
+  S.timer={tid:id,start:Date.now()};timers[S.me]=S.timer;S.timerWarn=0;logA(t,'started the timer','timer');renderAll();
+  toast('⏱ Timer started on #'+t.n+'. It keeps running in the top bar until you press Stop.');beep(880);
 }
 function stopTimer(quiet){
   if(!S.timer)return;const t=tById(S.timer.tid),sec=Math.max(60,Math.round(elapsed()));if(!t){S.timer=null;delete timers[S.me];renderAll();return}
-  entries.push({id:'e'+uid(),tid:t.id,uid:S.me,date:TODAY,secs:sec,note:'Timer',bill:1});logA(t,'logged '+hm(sec)+' with the timer');
+  entries.push({id:'e'+uid(),tid:t.id,uid:S.me,date:TODAY,secs:sec,note:'Timer',bill:1});logA(t,'stopped the timer and logged '+hm(sec),'timer');
   S.timer=null;delete timers[S.me];if(!quiet){toast('Logged '+hm(sec)+' on #'+t.n+'.');renderAll()}else queueSync()
 }
 const isOwner=t=>t&&(t.by===S.me||can('manage'));
@@ -471,7 +497,8 @@ function setStatus(t,ns,note){
   const old=t.st;t.st=ns;
   if(ns==='approved'||ns==='completed')t.done=t.done||TODAY;
   if(ns==='changes')t.rev++;
-  logA(t,'moved this task from '+stN(old)+' to '+stN(ns));
+  const apv=['review','approved','changes'].includes(ns);
+  logA(t,ns==='review'?'sent this task for approval'+(t.rv?' to '+uById(t.rv).name:''):ns==='approved'?'approved this task':ns==='changes'?'requested changes'+(note?': '+note.slice(0,140):''):'moved this task from '+stN(old)+' to '+stN(ns),apv?'approval':'task');
   if(note)t.comments.push({u:S.me,at:nowS(),tx:note,kind:ns==='changes'?'changes':ns==='approved'?'approve':''});
   S.pend=null;toast(ns==='review'?'Sent for review'+(t.rv?' to '+uById(t.rv).name:(t.by&&t.by!==S.me?' to '+uById(t.by).name:''))+'.':ns==='completed'?'Task closed.':ns==='cancelled'?'Task cancelled.':'Moved to '+stN(ns)+'. Assignee and reviewer notified.');renderAll();return true;
 }
@@ -482,8 +509,9 @@ function addComment(t,kind){
   if(kind==='approve'){const ok=setStatus(t,'approved',tx||'Approved.');if(ok)S.draft[t.id]='';return}
   if(!tx)return;
   t.comments.push({u:S.me,at:nowS(),tx:tx,kind:''});S.draft[t.id]='';
-  const mm=tx.match(/@([A-Za-z]+)/g);if(mm)toast('Notified '+mm.join(', '));
-  logA(t,'commented');renderAll();
+  const ment=mentionIds(tx);if(ment.length)toast('Notified '+ment.map(i=>first(uById(i))).join(', '));
+  if(ment.length)notifyUsers(ment,'mention',t,'mentioned you on #'+t.n+': '+tx.slice(0,160));
+  logA(t,'commented: '+tx.slice(0,160),'comment',{skip:ment});renderAll();
 }
 function modal(html){const m=$('#modal');m.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';m.hidden=false}
 function closeModal(){$('#modal').hidden=true;$('#modal').innerHTML=''}
@@ -494,9 +522,10 @@ function newTaskModal(pre){
    +'<div class="two"><label class="fld">Space<select name="sp">'+vs.map(s=>'<option value="'+s.id+'"'+(s.id===sid?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></label><label class="fld">Monthly folder<select name="fo">'+fopts(sid)+'</select></label>'
    +'<label class="fld">Assignee<select name="as">'+activeUsers().map(u=>'<option value="'+u.id+'"'+(u.id===S.me?' selected':'')+'>'+esc(u.name)+(u.role==='external'?' (external)':'')+'</option>').join('')+'</select></label><label class="fld">Reviewer<select name="rv"><option value="">No reviewer</option>'+activeUsers().filter(u=>['admin','manager','reviewer'].includes(u.role)).map(u=>'<option value="'+u.id+'">'+esc(u.name)+'</option>').join('')+'</select></label>'
    +'<label class="fld">Start date<input type="date" name="start" value="'+TODAY+'"></label><label class="fld">Due date<input type="date" name="due" value="'+addDays(TODAY,7)+'"></label>'
+   +'<label class="fld">Posting date (optional)<input type="date" name="post" value="'+esc(pre.post||'')+'"></label>'
    +'<label class="fld">Priority<select name="pri"><option value="medium">Medium</option><option value="urgent">Urgent</option><option value="high">High</option><option value="low">Low</option></select></label>'
    +'<label class="fld">Campaign (optional)<select name="camp"><option value="">None</option>'+campaigns.map(c=>'<option value="'+c.id+'"'+(pre.camp===c.id?' selected':'')+'>'+esc(c.name)+'</option>').join('')+'</select></label></div>'
-   +'<label class="fld">Brief<textarea name="brief" rows="3" placeholder="Describe the task, goals and references">'+esc(pre.brief||'')+'</textarea></label><div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Create task</button></div></form>');
+   +'<label class="fld">Brief<textarea name="brief" rows="3" placeholder="Describe the task, goals and reference links (links become clickable)">'+esc(pre.brief||'')+'</textarea></label><div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Create task</button></div></form>');
 }
 function mentionCheck(el){
   const box=$('#mbox'),v=el.value.slice(0,el.selectionStart),m=v.match(/@([A-Za-z]*)$/);
@@ -585,15 +614,20 @@ document.addEventListener('change',function(e){
     if(!visSpaces().some(s=>s.id===S.sp)){S.sp='all';S.fo='all'}S.fa='all';S.dsp='all';S.dpe='all';S.drawer=null;S.pend=null;renderAll();toast('Now viewing as '+me().name+' ('+ROLES[r]+')');return}
   if(el.name==='sp'&&el.closest('[data-form=newtask]')){const sel=$('select[name=fo]',el.closest('form'));const fs=folders.filter(x=>x.sp===el.value).sort((a,b)=>a.ym<b.ym?-1:1);if(!fs.some(f=>f.ym===CUR_YM))fs.push({id:el.value+'-'+CUR_YM,ym:CUR_YM,name:ymName(CUR_YM)});sel.innerHTML=fs.map(x=>'<option value="'+x.id+'"'+(x.ym===CUR_YM?' selected':'')+'>'+esc(x.name)+'</option>').join('');return}
   if(!f)return;
-  if(['fa','fp','dsp','dpe','ls','lst','rm','cst'].includes(f)){S[f]=el.value;renderMain();return}
+  if(['fa','fp','dsp','dpe','ls','lst','rm','cst','sort','fown','csp','cty'].includes(f)){S[f]=el.value;renderMain();return}
   const t=S.drawer&&S.drawer.type==='task'?tById(S.drawer.id):null;if(!t)return;
   if(f==='st'){if(!setStatus(t,el.value))renderDrawer();return}
-  if(f==='addAs'){if(el.value){t.as.push(el.value);logA(t,'assigned '+uById(el.value).name);toast(uById(el.value).name+' was notified.');renderAll()}return}
-  if(f==='subd'){t.subs[+el.dataset.i].d=el.checked?1:0;renderAll();return}
+  if(f==='addAs'){if(el.value){t.as.push(el.value);logA(t,'assigned '+uById(el.value).name+' to #'+t.n);toast(uById(el.value).name+' was notified.');renderAll()}return}
+  if(f==='subd'){const sb2=t.subs[+el.dataset.i];sb2.d=el.checked?1:0;logA(t,(el.checked?'completed':'reopened')+' subtask “'+sb2.t+'”');renderAll();return}
   if(f==='chkd'){t.check[+el.dataset.i].d=el.checked?1:0;renderAll();return}
   if(f==='est'){t.est=parseFloat(el.value)||0;renderAll();return}
   if(f==='title'&&!el.value.trim()){renderDrawer();return}
-  t[f]=el.value;logA(t,'updated '+({title:'the title',pri:'the priority',start:'the start date',due:'the due date',rv:'the reviewer',brief:'the brief'}[f]||f));renderAll();
+  if(f==='brief')S.briefEdit[t.id]=false;
+  const ov=t[f];t[f]=el.value;
+  if(f==='rv'){logA(t,el.value?'made '+uById(el.value).name+' the reviewer':'removed the reviewer','task',{also:el.value?[el.value]:[]});renderAll();return}
+  if(f==='by'){logA(t,'made '+uById(el.value).name+' the owner','task',{also:[el.value,ov].filter(Boolean)});renderAll();return}
+  const nice={title:'the title',pri:'the priority to '+cap(String(el.value||'')),start:'the start date to '+(el.value?dd(el.value):'none'),due:'the due date to '+(el.value?dd(el.value):'none'),post:'the posting date to '+(el.value?dd(el.value):'none'),brief:'the brief',fo:'the monthly folder',camp:'the campaign'}[f]||f;
+  logA(t,'updated '+nice);renderAll();
 });
 document.addEventListener('input',function(e){
   const el=e.target;
@@ -612,8 +646,8 @@ document.addEventListener('submit',function(e){
   const f=e.target.dataset.form;if(!f)return;e.preventDefault();const d=new FormData(e.target);
   if(f==='newtask'){
     const ym=d.get('fo').slice(d.get('sp').length+1);ensureFolder(d.get('sp'),ym);
-    const t=T(d.get('sp'),ym,d.get('title').trim(),'todo',d.get('pri'),d.get('as'),d.get('rv'),d.get('start'),d.get('due'),{brief:d.get('brief'),camp:d.get('camp')||'',log:[{u:S.me,tx:'created this task',at:nowS()}]});
-    tasks.push(t);closeModal();S.view='tasks';S.sp=t.sp;S.fo=t.fo;renderAll();openD('task',t.id);toast('Task #'+t.n+' created'+(d.get('as')&&d.get('as')!==S.me?' and '+uById(d.get('as')).name+' was notified':'')+'.');
+    const t=T(d.get('sp'),ym,d.get('title').trim(),'todo',d.get('pri'),d.get('as'),d.get('rv'),d.get('start'),d.get('due'),{brief:d.get('brief'),post:d.get('post')||'',camp:d.get('camp')||'',log:[{u:S.me,tx:'created this task',at:nowS()}]});
+    tasks.push(t);notifyTask(t,'task','created #'+t.n+' '+t.title+(t.as[0]&&t.as[0]!==S.me?' and assigned it to '+uById(t.as[0]).name:'')+' · '+cap(t.pri)+' priority · due '+dd(t.due));closeModal();S.view='tasks';S.sp=t.sp;S.fo=t.fo;renderAll();openD('task',t.id);toast('Task #'+t.n+' created'+(d.get('as')&&d.get('as')!==S.me?' and '+uById(d.get('as')).name+' was notified':'')+'.');
   }else if(f==='newspace'){
     const name=d.get('name').trim(),id='sp'+Date.now(),tpl=d.get('tpl');
     spaces.push({id:id,name:name,short:name.length>18?name.slice(0,16)+'…':name,color:d.get('color')});
@@ -771,6 +805,7 @@ document.addEventListener('click',function(e){
       t.files.forEach(f=>{if(f.path)sb.storage.from(BUCKET).remove([f.path])});
       for(let i=entries.length-1;i>=0;i--)if(entries[i].tid===t.id)entries.splice(i,1);
       lib.forEach(x=>{if(x.task===t.id)x.task=null});if(S.timer&&S.timer.tid===t.id){S.timer=null;delete timers[S.me]}
+      notifyTask(t,'task','deleted task #'+t.n+' '+t.title);delete S.sel[t.id];
       tasks.splice(tasks.indexOf(t),1);S.drawer=null;renderAll();toast('Task deleted.')});break;
    case 'rmTag':t.tags.splice(+el.dataset.i,1);renderAll();break;
    case 'addField':{const k=$('#cfK').value.trim(),val=$('#cfV').value.trim();if(!k)return toast('Enter a field name.');t.fields[k]=val;logA(t,'set '+k);renderAll();break}
@@ -893,7 +928,7 @@ const SER={
   entry:x=>x, lib:x=>x, msg:x=>x, camp:x=>x, invite:x=>x,
   channel:x=>pick(x,['name','kind','sp','custom','members','desc']),
   member:x=>pick(x,['title','role','sp','active']),
-  timer:x=>x, setting:x=>x
+  timer:x=>x, setting:x=>x, mark:x=>x
 };
 function collect(){
   const m=new Map(),put=(k,id,o)=>m.set(k+'|'+id,stable(SER[k](o)));
@@ -903,6 +938,7 @@ function collect(){
   users.forEach(u=>{if(u.hasDoc||u.id===S.me||u.dirty)put('member',u.id,u)});
   Object.keys(timers).forEach(k=>put('timer',k,timers[k]));
   put('setting','flags',S.flags);
+  Object.keys(marks).forEach(k=>put('mark',k,{ids:marks[k]}));
   return m;
 }
 const snap=new Map();let syncT=null,syncing=false,again=false,ready=false;
@@ -927,6 +963,7 @@ async function doSync(){
 function setSaved(ok){const n=$('#saveState');if(n){n.textContent=ok?'All changes saved':'Offline';n.className='savestate'+(ok?'':' off')}}
 
 function applyRow(kind,id,doc,isDel){
+  if(kind==='notif')return gotNotif(id,doc,isDel);
   const key=kind+'|'+id;
   if(!isDel){const js=stable(doc);if(snap.get(key)===js)return false;snap.set(key,js)}else{if(!snap.has(key))return false;snap.delete(key)}
   const arr={space:spaces,folder:folders,task:tasks,entry:entries,lib:lib,msg:messages,camp:campaigns,channel:channels,invite:S.invites}[kind];
@@ -937,6 +974,7 @@ function applyRow(kind,id,doc,isDel){
   if(kind==='member'){const u=users.find(x=>x.id===id);if(u&&isDel){users.splice(users.indexOf(u),1);return true}if(!u&&!isDel&&doc.name){users.push({id:id,name:doc.name,email:doc.email||'',title:doc.title||'',role:/@finstreeteducation\.com$/.test(doc.email||'')?'admin':(doc.role||'member'),hue:hueOf(id),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true});return true}if(u&&!isDel){const pa=(D.profiles||[]).find(x=>x.id===id);Object.assign(u,{title:doc.title||'',role:pa&&pa.role==='admin'?'admin':(doc.role||u.role),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true})}return true}
   if(kind==='timer'){if(isDel){delete timers[id];if(id===S.me)S.timer=null}else{timers[id]=doc;if(id===S.me)S.timer=doc}return true}
   if(kind==='setting'&&id==='flags'&&!isDel){S.flags=doc;return true}
+  if(kind==='mark'){if(isDel)delete marks[id];else marks[id]=Array.isArray(doc.ids)?doc.ids:[];return true}
   return false;
 }
 function softRender(){
@@ -967,12 +1005,15 @@ function load(rows){
     if(r.kind==='member'){const u=users.find(x=>x.id===r.id);if(u){const pr=u.role;Object.assign(u,{title:d.title||'',role:pr==='admin'?'admin':(d.role||pr),sp:pr==='admin'?'all':(d.sp||'all'),active:d.active!==false,hasDoc:true})}}
     else if(r.kind==='timer'){timers[r.id]=d;if(r.id===S.me)S.timer=d}
     else if(r.kind==='setting'){if(r.id==='flags')S.flags=Object.assign(S.flags,d)}
+    else if(r.kind==='mark'){marks[r.id]=Array.isArray(d.ids)?d.ids:[]}
+    else if(r.kind==='notif'){}
     else{const arr={space:spaces,folder:folders,task:tasks,entry:entries,lib:lib,msg:messages,camp:campaigns,channel:channels,invite:S.invites}[r.kind];if(arr)arr.push(Object.assign({},d,{id:r.id}))}
   });
   tn=Math.max(100,...tasks.map(t=>t.n||0));
   spaces.sort((a,b)=>(a.order||0)-(b.order||0)||String(a.name).localeCompare(b.name));
   // snapshot = what is in the database
-  rows.forEach(r=>snap.set(r.kind+'|'+r.id,stable(r.doc||{})));
+  rows.forEach(r=>{if(r.kind!=='notif')snap.set(r.kind+'|'+r.id,stable(r.doc||{}))});
+  notifs=(D.notifs||[]).map(r=>Object.assign({},r.doc,{id:r.id})).filter(n=>n.to===S.me).sort((a,b)=>(b.at||'')<(a.at||'')?-1:1);
 }
 load(D.docs||[]);
 // first run: create the FinStreet spaces, folders and chats
@@ -1002,7 +1043,8 @@ let hiddenAt=0;
 document.addEventListener('visibilitychange',async()=>{
   if(document.hidden){hiddenAt=Date.now();return}
   if(Date.now()-hiddenAt<30000)return;
-  const {data}=await sb.from('hub_docs').select('kind,id,doc').neq('kind','msg');
+  const {data}=await sb.from('hub_docs').select('kind,id,doc').not('kind','in','(msg,notif)');
+  refreshNotifs();
   const {data:ms}=await sb.from('hub_docs').select('kind,id,doc').eq('kind','msg').order('created_at',{ascending:false}).limit(800);
   if(!data)return;const rows=data.concat(ms||[]);let ch=false;
   const seenKeys=new Set(rows.map(r=>r.kind+'|'+r.id));rows.forEach(r=>{if(applyRow(r.kind,r.id,r.doc,false))ch=true});
@@ -1015,8 +1057,8 @@ ready=true;
 /* ---------- task workflow buttons ---------- */
 function actionBar(t){
   const mine=t.as.includes(S.me),own=isOwner(t),b=[];
-  if(mine&&['todo','hold'].includes(t.st))b.push(['setst','progress','Start work','']);
-  if((mine||own)&&['todo','progress','changes','hold'].includes(t.st))b.push(['sendReview','','Send for review','primary']);
+  if(mine&&['todo','hold','changes'].includes(t.st))b.push(['startWork','','▶ Start work + timer','']);
+  if((mine||own)&&['todo','progress','changes','hold'].includes(t.st))b.push(['sendReview','','Send for approval','primary']);
   if(t.st==='review'&&canReview(t)){b.push(['setst','approved','Approve','primary']);b.push(['setst','changes','Request changes',''])}
   if(own&&!CLOSED.includes(t.st))b.push(['closeTask','','Close task',t.st==='approved'?'primary':'']);
   if(own&&!CLOSED.includes(t.st))b.push(['cancelTask','','Cancel task','ghost-danger']);
@@ -1034,7 +1076,7 @@ document.addEventListener('click',function(e){
    case 'clearFx':S.fx=null;renderAll();break;
    case 'keys':keysModal();break;
    case 'setst':if(t){const ns=el.dataset.v;if(ns==='todo')t.done='';setStatus(t,ns)}break;
-   case 'sendReview':if(t){if(!t.rv&&(!t.by||t.by===S.me)&&!can('approve')){toast('Pick a reviewer first, then press Send for review.');const r=$('select[data-f="rv"]');if(r)r.focus();break}setStatus(t,'review')}break;
+   case 'sendReview':if(t)sendReviewModal(t);break;
    case 'closeTask':if(t)confirmBox('Close task #'+t.n+'?','It will be marked Completed'+(t.st!=='approved'?' without waiting for approval':'')+'.','Close task',()=>setStatus(t,'completed'));break;
    case 'cancelTask':if(t)confirmBox('Cancel task #'+t.n+'?','It will move to Cancelled. You can reopen it later.','Cancel task',()=>setStatus(t,'cancelled'));break;
   }
@@ -1056,6 +1098,225 @@ document.addEventListener('keydown',function(e){
   else if((k==='b'||k==='B')&&S.view==='tasks'){S.layout=S.layout==='board'?'list':'board';renderMain()}
   else if(k==='?')keysModal();
 });
+
+/* =====================================================================
+   v7: notifications inbox, reviewer queue, calendar, admin view,
+   marks (stars), priority sorting, bulk remove, timer alerts
+   ===================================================================== */
+Object.assign(IC,{
+ star:P('M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.3l-5.7 3 1.1-6.3L2.8 9.5l6.4-.9z'),
+ cal:'<rect x="3" y="4" width="18" height="17" rx="2"/>'+P('M3 9h18M8 2v4M16 2v4')
+});
+const PRANK={urgent:0,high:1,medium:2,low:3};
+function sortTasks(arr,mode){
+  mode=mode||S.sort;
+  const nw=(a,b)=>(b.n||0)-(a.n||0);
+  return arr.slice().sort((a,b)=>mode==='new'?nw(a,b):mode==='due'?((a.due||'9')<(b.due||'9')?-1:(a.due||'9')>(b.due||'9')?1:(PRANK[a.pri]-PRANK[b.pri])||nw(a,b)):((PRANK[a.pri]??2)-(PRANK[b.pri]??2))||nw(a,b));
+}
+const isNew=t=>!!t.created&&Date.now()-Date.parse(t.created)<864e5&&!CLOSED.includes(t.st);
+const myMarks=()=>marks[S.me]||[];
+const isMarked=t=>myMarks().includes(t.id);
+const starBtn=(t,big)=>'<button class="star'+(isMarked(t)?' on':'')+(big?' big':'')+'" data-act="mark" data-id="'+t.id+'" title="'+(isMarked(t)?'Remove mark':'Mark this task')+'" aria-label="'+(isMarked(t)?'Remove mark':'Mark this task')+'" aria-pressed="'+isMarked(t)+'">'+ic('star',big?17:14)+'</button>';
+function fxOk(t){if(!S.fx)return true;if(S.fx==='overdue')return isOver(t);if(S.fx==='review')return t.st==='review';if(S.fx==='marked')return isMarked(t);return !CLOSED.includes(t.st)}
+const canDelT=t=>me().role!=='external'&&(can('manage')||t.by===S.me);
+const isMyReview=t=>t.rv===S.me||(!t.rv&&t.by===S.me)||can('manage');
+const reviewQueue=()=>sortTasks(visTasks().filter(t=>t.st==='review'&&isMyReview(t)),'smart');
+function bulkBar(ts){
+  const sel=ts.filter(t=>S.sel[t.id]);if(!sel.length)return '';
+  return '<div class="bulk"><b>'+sel.length+' selected</b><select id="bulkSt" aria-label="Move selected to"><option value="">Move to…</option>'+ST.filter(x=>x.k!=='changes').map(x=>'<option value="'+x.k+'">'+x.n+'</option>').join('')+'</select><button class="btn sm danger" data-act="bulkDel">'+ic('trash',13)+'Delete selected</button><button class="btn sm" data-act="clearSel">Clear</button></div>';
+}
+function mentionIds(tx){const out=new Set();(String(tx||'').match(/@([A-Za-z]+)/g)||[]).forEach(m=>{const n=m.slice(1).toLowerCase();users.forEach(u=>{if(u.id!==S.me&&u.active!==false&&first(u).toLowerCase()===n)out.add(u.id)})});return Array.from(out)}
+
+/* ---------- notifications: stored per person in hub_docs (kind "notif") ---------- */
+const NTYPE={task:'Task update',approval:'Approval',comment:'Comment',mention:'Mention',timer:'Timer'};
+const nbuf=new Map();let nT=null;
+function notifyTask(t,type,tx,extra){
+  if(!t)return;extra=extra||{};
+  const to=new Set([].concat(t.as||[],[t.rv,t.by],extra.also||[]).filter(Boolean));
+  users.forEach(u=>{if(u.role==='admin'&&u.active!==false)to.add(u.id)});
+  (extra.skip||[]).forEach(x=>to.delete(x));to.delete(S.me);
+  notifyUsers(Array.from(to),type,t,tx,extra);
+}
+function notifyUsers(ids,type,t,tx,extra){
+  extra=extra||{};
+  ids.forEach(id=>{
+    if(id===S.me)return;const u=users.find(x=>x.id===id);if(!u||u.active===false)return;
+    if(u.role==='external'&&t&&!(t.as||[]).includes(id))return;
+    const k=id+'|'+(t?t.id:extra.ch||'')+'|'+type;const ex=nbuf.get(k);
+    if(ex){if(ex.tx.length<400)ex.tx+=' · '+tx;return}
+    nbuf.set(k,{to:id,from:S.me,type:type,tid:t?t.id:'',tn:t?t.n:'',title:t?t.title:'',ch:extra.ch||'',tx:String(tx||''),at:new Date().toISOString(),read:false});
+  });
+  clearTimeout(nT);nT=setTimeout(flushN,1200);
+}
+async function flushN(){
+  if(!nbuf.size)return;const rows=Array.from(nbuf.values()).map(d=>({kind:'notif',id:'n'+uid(),doc:d}));nbuf.clear();
+  try{const {error}=await sb.from('hub_docs').insert(rows);if(error)console.warn('notify',error.message)}catch(e){console.warn('notify',e)}
+}
+window.addEventListener('beforeunload',()=>{if(nbuf.size)flushN()});
+function gotNotif(id,doc,isDel){
+  const i=notifs.findIndex(n=>n.id===id);
+  if(isDel){if(i>-1){notifs.splice(i,1);return true}return false}
+  if(!doc||doc.to!==S.me)return false;
+  const n=Object.assign({},doc,{id:id});
+  if(i>-1){notifs[i]=n;return true}
+  notifs.unshift(n);
+  if(Date.now()-Date.parse(n.at||0)<120000)alertNotif(n);
+  return true;
+}
+async function refreshNotifs(){
+  const {data}=await sb.from('hub_docs').select('kind,id,doc').eq('kind','notif').eq('doc->>to',S.me).order('created_at',{ascending:false}).limit(200);
+  if(data){notifs=data.map(r=>Object.assign({},r.doc,{id:r.id}));softRender()}
+}
+function nText(n){return esc(uById(n.from).name)+' '+fmtText(n.tx||'')}
+function ago(iso){const s=(Date.now()-Date.parse(iso||0))/1000;if(!(s>=0))return '';if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';const d=new Date(iso);return d.getDate()+' '+MS[d.getMonth()]+', '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}
+function nRow(n){
+  return '<div class="nrow'+(n.read?'':' unread')+'" data-act="openN" data-id="'+n.id+'" role="button" tabindex="0">'+av(uById(n.from))+'<span class="nb"><span class="nt">'+nText(n)+'</span>'+(n.tn&&!String(n.tx||'').includes('#'+n.tn)?'<span class="ntask">#'+n.tn+' '+esc(n.title||'')+'</span>':'')+'<small>'+ago(n.at)+' · <i class="ntype ty-'+esc(n.type)+'">'+(NTYPE[n.type]||'Update')+'</i></small></span>'+(n.read?'':'<i class="udot" aria-label="Unread"></i>')+'</div>';
+}
+function markRead(list){
+  list=list.filter(n=>!n.read);if(!list.length)return;
+  list.forEach(n=>{n.read=true});
+  const rows=list.map(n=>{const d=Object.assign({},n);delete d.id;return {kind:'notif',id:n.id,doc:d}});
+  for(let i=0;i<rows.length;i+=200)sb.from('hub_docs').upsert(rows.slice(i,i+200),{onConflict:'kind,id'}).then(({error})=>{if(error)console.warn(error.message)});
+  renderSide();renderTop();if(S.view==='inbox'||S.view==='dashboard')renderMain();
+}
+const pushState=()=>'Notification' in window?Notification.permission:'unsupported';
+let actx=null;
+function beep(f){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=f||660;g.gain.setValueAtTime(.0001,actx.currentTime);g.gain.exponentialRampToValueAtTime(.08,actx.currentTime+.02);g.gain.exponentialRampToValueAtTime(.0001,actx.currentTime+.35);o.connect(g);g.connect(actx.destination);o.start();o.stop(actx.currentTime+.4)}catch(e){}}
+function alertNotif(n){
+  const who=uById(n.from).name,body=who+' '+(n.tx||'')+(n.tn&&!String(n.tx||'').includes('#'+n.tn)?' (#'+n.tn+' '+(n.title||'')+')':'');
+  toast('🔔 '+body.slice(0,180));beep(n.type==='approval'||n.type==='mention'?990:660);
+  if(pushState()==='granted'&&(document.hidden||!document.hasFocus())){
+    try{const dn=new Notification((NTYPE[n.type]||'Update')+' · FinStreet Hub',{body:body.slice(0,240),icon:'/icon-192.png',tag:n.id});dn.onclick=()=>{window.focus();openNotif(n);dn.close()}}catch(e){}
+  }
+}
+function openNotif(n){
+  markRead([n]);
+  if(n.tid){if(tById(n.tid)){S.bell=false;openD('task',n.tid)}else toast('That task has been deleted.');return}
+  if(n.ch&&channels.some(c=>c.id===n.ch)){S.view='chat';S.ch=n.ch;S.chatOpen=true;S.bell=false;S.drawer=null;renderAll()}
+}
+function vInbox(){
+  const tabs=[['all','All'],['task','Tasks'],['approval','Approvals'],['comment','Comments and mentions'],['timer','Timer']];
+  const inTab=n=>S.ntab==='all'||(S.ntab==='comment'?(n.type==='comment'||n.type==='mention'):n.type===S.ntab);
+  const list=notifs.filter(n=>inTab(n)&&(!S.nun||!n.read)),un=notifs.filter(n=>!n.read).length;
+  let h='<div class="pagehead"><div class="grow"><h2>Inbox</h2><p>Every step on your tasks: new tasks, assignments, status changes, approvals, comments, mentions and timers'+(me().role==='admin'?'. As an admin you get every update across the team':'')+'.</p></div>'
+   +(pushState()==='default'?'<button class="btn" data-act="pushOn">'+ic('bell',15)+'Turn on desktop alerts</button>':pushState()==='denied'?'<span class="muted" style="font-size:12.5px">Desktop alerts are blocked in this browser’s site settings.</span>':pushState()==='granted'?'<span class="pill st-completed">Desktop alerts on</span>':'')
+   +(un?'<button class="btn" data-act="readAll">'+ic('check',15)+'Mark all read</button>':'')
+   +(notifs.some(n=>n.read)?'<button class="btn" data-act="clearRead">'+ic('trash',15)+'Clear read</button>':'')+'</div>';
+  h+='<div class="bar"><div class="seg" role="group" aria-label="Type">'+tabs.map(x=>{const c=notifs.filter(n=>!n.read&&(x[0]==='all'||(x[0]==='comment'?(n.type==='comment'||n.type==='mention'):n.type===x[0]))).length;return '<button data-act="ntab" data-v="'+x[0]+'" class="'+(S.ntab===x[0]?'on':'')+'">'+x[1]+(c?' <em class="cnt">'+c+'</em>':'')+'</button>'}).join('')+'</div><label class="ck" style="margin:0"><input type="checkbox" data-act="nun"'+(S.nun?' checked':'')+'><span>Unread only</span></label></div>';
+  h+='<div class="panel nlist">'+(list.length?list.map(nRow).join(''):'<div class="empty">'+(S.nun?'No unread updates here.':'No updates yet. When someone assigns you a task, moves it, comments, asks for approval or starts a timer, it shows up here.')+'</div>')+'</div>';
+  return h;
+}
+function vApprovals(){
+  const q=reviewQueue(),mineSent=sortTasks(visTasks().filter(t=>t.st==='review'&&t.as.includes(S.me)),'smart');
+  const recent=visTasks().filter(t=>(t.st==='approved'||t.st==='changes')&&(t.rv===S.me||t.by===S.me||t.as.includes(S.me))).slice(0,8);
+  const row=(t,act)=>{const sp=spById(t.sp);return '<div class="li" data-act="open" data-id="'+t.id+'"><i class="dot" style="background:'+sp.color+'"></i><div class="tt"><b>#'+t.n+' '+esc(t.title)+'</b><small>'+esc(sp.short||sp.name)+' · '+priTag(t.pri)+' · by '+esc(t.as.map(i=>uById(i).name).join(', ')||'-')+' · reviewer '+esc(t.rv?uById(t.rv).name:(t.by?uById(t.by).name+' (owner)':'-'))+'</small></div>'+(act&&canReview(t)?'<button class="btn sm primary" data-act="apOk" data-id="'+t.id+'">'+ic('check',13)+'Approve</button><button class="btn sm" data-act="apChg" data-id="'+t.id+'">Request changes</button>':stPill(t.st))+'<span class="when'+(isOver(t)?' over':'')+'">'+(isOver(t)?diff(t.due,TODAY)+'d late':'Due '+dd(t.due))+'</span></div>'};
+  let h='<div class="pagehead"><div class="grow"><h2>Approvals</h2><p>Tasks sent for approval. The reviewer (or the task owner, if no reviewer is set) and admins get a notification the moment a task is sent.</p></div></div>';
+  h+='<div class="panel" style="margin-bottom:14px"><h3>Waiting for your approval<small>'+q.length+'</small></h3>'+(q.length?q.map(t=>row(t,1)).join(''):'<div class="empty">Nothing waiting for you.</div>')+'</div>';
+  h+='<div class="grid g2"><div class="panel"><h3>You sent for approval<small>'+mineSent.length+'</small></h3>'+(mineSent.length?mineSent.map(t=>row(t,0)).join(''):'<div class="empty">None of your tasks are waiting for approval.</div>')+'</div>'
+   +'<div class="panel"><h3>Recently reviewed<small>approved or changes requested</small></h3>'+(recent.length?recent.map(t=>row(t,0)).join(''):'<div class="empty">Nothing reviewed yet.</div>')+'</div></div>';
+  return h;
+}
+function sendReviewModal(t){
+  const rvs=activeUsers().filter(u=>['admin','manager','reviewer'].includes(u.role)&&u.id!==S.me);
+  const def=t.rv||((t.by&&t.by!==S.me)?'':(rvs[0]||{}).id||'');
+  modal('<h3>Send #'+t.n+' for approval</h3><form data-form="sendreview" style="display:flex;flex-direction:column;gap:12px"><label class="fld">Reviewer<select name="rv"'+(t.by&&t.by!==S.me?'':' required')+'>'+(t.by&&t.by!==S.me?'<option value="">'+esc(uById(t.by).name)+' (task owner)</option>':'<option value="">Choose a reviewer</option>')+rvs.map(u=>'<option value="'+u.id+'"'+(def===u.id?' selected':'')+'>'+esc(u.name)+' · '+ROLES[u.role]+'</option>').join('')+'</select></label><label class="fld">Note for the reviewer (optional)<textarea name="note" rows="3" placeholder="What should they check? Paste links to the final files."></textarea></label><p class="muted" style="margin:0;font-size:12.5px">The reviewer and admins are notified straight away.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Send for approval</button></div></form>');
+}
+
+/* ---------- calendar: due dates and posting dates ---------- */
+function vCal(){
+  const a=S.cm.split('-').map(Number),y=a[0],mo=a[1];
+  const startDow=(new Date(Date.UTC(y,mo-1,1)).getUTCDay()+6)%7,daysIn=new Date(Date.UTC(y,mo,0)).getUTCDate();
+  const cells=Math.ceil((startDow+daysIn)/7)*7,first0=addDays(S.cm+'-01',-startDow);
+  const ts=visTasks().filter(t=>S.csp==='all'||t.sp===S.csp);
+  const by={};const push=(d,x)=>{if(d)(by[d]=by[d]||[]).push(x)};
+  ts.forEach(t=>{if(S.cty!=='post')push(t.due,{t:t,k:'due'});if(S.cty!=='due')push(t.post,{t:t,k:'post'})});
+  Object.keys(by).forEach(d=>by[d].sort((p,q)=>(p.k===q.k?0:p.k==='post'?-1:1)||(PRANK[p.t.pri]-PRANK[q.t.pri])));
+  const chip=x=>{const sp=spById(x.t.sp),cl=CLOSED.includes(x.t.st)||x.t.st==='approved';return '<button class="cal-it k-'+x.k+(cl?' done':'')+(x.k==='due'&&isOver(x.t)?' over':'')+'" data-act="open" data-id="'+x.t.id+'" style="--c:'+sp.color+'" title="'+(x.k==='post'?'Posting':'Due')+': #'+x.t.n+' '+esc(x.t.title)+' · '+stN(x.t.st)+'"><em>'+(x.k==='post'?'Post':'Due')+'</em>'+esc(x.t.title)+'</button>'};
+  let h='<div class="pagehead"><div class="grow"><h2>'+ymName(S.cm)+'</h2><p>Due dates and posting dates for every task. Set a <b>Posting date</b> on a task to see it here.</p></div>'
+   +'<div class="seg" role="group" aria-label="Month"><button data-act="calMove" data-v="-1" aria-label="Previous month">‹</button><button data-act="calMove" data-v="0">Today</button><button data-act="calMove" data-v="1" aria-label="Next month">›</button></div>'
+   +'<div class="seg" role="group" aria-label="Show"><button data-act="calTy" data-v="both" class="'+(S.cty==='both'?'on':'')+'">Both</button><button data-act="calTy" data-v="post" class="'+(S.cty==='post'?'on':'')+'">Posting</button><button data-act="calTy" data-v="due" class="'+(S.cty==='due'?'on':'')+'">Due</button></div>'
+   +'<select data-f="csp" aria-label="Space"><option value="all">All spaces</option>'+visSpaces().map(s2=>'<option value="'+s2.id+'"'+(S.csp===s2.id?' selected':'')+'>'+esc(s2.name)+'</option>').join('')+'</select>'
+   +(can('create')?'<button class="btn primary" data-act="newTask">'+ic('plus')+'New task</button>':'')+'</div>';
+  h+='<div class="cal"><div class="cal-h">'+['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>'<span>'+d+'</span>').join('')+'</div><div class="cal-g">';
+  for(let i=0;i<cells;i++){const d=addDays(first0,i),its=by[d]||[],out=d.slice(0,7)!==S.cm;
+    h+='<div class="cal-d'+(out?' out':'')+(d===TODAY?' today':'')+'"><div class="cal-n"><span>'+(+d.slice(8))+'</span>'+(its.length>3?'<button class="lnkbtn" data-act="calDay" data-v="'+d+'">+'+(its.length-3)+'</button>':'')+'</div>'+its.slice(0,3).map(chip).join('')+'</div>'}
+  h+='</div></div>';
+  const mon=Object.keys(by).filter(d=>d.slice(0,7)===S.cm).sort();
+  h+='<div class="panel cal-agenda"><h3>This month<small>'+mon.reduce((n,d)=>n+by[d].length,0)+' dates</small></h3>'+(mon.length?mon.map(d=>'<div class="ag-d"><b>'+dw(d)+' '+dd(d)+'</b>'+by[d].map(chip).join('')+'</div>').join(''):'<div class="empty">Nothing scheduled this month.</div>')+'</div>';
+  h+='<div class="legend"><span class="cal-it k-post" style="--c:var(--accent)"><em>Post</em>Posting date</span> <span class="cal-it k-due" style="--c:var(--accent)"><em>Due</em>Due date</span> Colour = space. Faded = approved or done.</div>';
+  return h;
+}
+
+/* ---------- admin dashboard: who is working on what, team status, latest activity ---------- */
+function adminPanels(ts){
+  const people=activeUsers().filter(u=>u.role!=='external');
+  const todaySecs=u=>entries.filter(e=>e.uid===u.id&&e.date===TODAY).reduce((a,e)=>a+e.secs,0);
+  const live=people.filter(u=>timers[u.id]&&tById(timers[u.id].tid)).length;
+  let h='<div class="grid g2"><div class="panel"><h3>Team right now<small>'+live+' timer'+(live===1?'':'s')+' running</small></h3><div class="tbl-wrap" style="border:0"><table class="team-now"><thead><tr><th>Person</th><th>Working on</th><th class="num">Open</th><th class="num">Review</th><th class="num">Late</th><th class="num">Today</th></tr></thead><tbody>'
+   +people.map(u=>{const tm=timers[u.id],tt=tm?tById(tm.tid):null,mt=ts.filter(t=>t.as.includes(u.id));const ov=mt.filter(isOver).length;
+     return '<tr><td><span style="display:flex;gap:8px;align-items:center;white-space:nowrap">'+av(u)+esc(u.name)+'</span></td><td>'+(tt?'<a href="#" class="livetxt" data-act="open" data-id="'+tt.id+'"><span class="dotlive"></span>#'+tt.n+' '+esc(tt.title.length>34?tt.title.slice(0,32)+'…':tt.title)+' · <span class="mono" data-since="'+tm.start+'">'+clock((Date.now()-tm.start)/1000)+'</span></a>':'<span class="muted">No timer</span>')+'</td><td class="num">'+mt.filter(t=>!CLOSED.includes(t.st)&&t.st!=='approved').length+'</td><td class="num">'+mt.filter(t=>t.st==='review').length+'</td><td class="num'+(ov?' bad':'')+'">'+ov+'</td><td class="num mono">'+hm(todaySecs(u)+(tm&&tt?(Date.now()-tm.start)/1000:0))+'</td></tr>'}).join('')
+   +'</tbody></table></div></div>';
+  h+='<div class="panel"><h3>Latest activity<small><a href="#" data-act="nav" data-v="inbox">Open inbox</a></small></h3>'+(notifs.length?notifs.slice(0,8).map(nRow).join(''):'<div class="empty">Updates from the team show up here as they happen.</div>')+'</div></div>';
+  return h;
+}
+
+/* ---------- v7 actions ---------- */
+document.addEventListener('click',function(e){
+  const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act,id=el.dataset.id;
+  const t=S.drawer&&S.drawer.type==='task'?tById(S.drawer.id):null;
+  switch(a){
+   case 'mark':{e.preventDefault();e.stopPropagation();const l=myMarks().slice(),i=l.indexOf(id);if(i>-1)l.splice(i,1);else l.unshift(id);marks[S.me]=l;toast(i>-1?'Mark removed.':'Marked. Find it under Marked in the sidebar.');renderAll();break}
+   case 'openN':{const n=notifs.find(x=>x.id===id);if(n)openNotif(n);break}
+   case 'readAll':markRead(notifs.slice());break;
+   case 'clearRead':{const ids=notifs.filter(n=>n.read).map(n=>n.id);notifs=notifs.filter(n=>!n.read);renderAll();for(let i=0;i<ids.length;i+=200)sb.from('hub_docs').delete().eq('kind','notif').in('id',ids.slice(i,i+200)).then(({error})=>{if(error)toast('Could not clear: '+error.message)});break}
+   case 'pushOn':if(pushState()==='default')Notification.requestPermission().then(p=>{toast(p==='granted'?'Desktop alerts are on.':'Desktop alerts were not allowed.');renderAll()});break;
+   case 'ntab':S.ntab=el.dataset.v;renderMain();break;
+   case 'nun':S.nun=el.checked;renderMain();break;
+   case 'editBrief':if(t){S.briefEdit[t.id]=true;renderDrawer();setTimeout(()=>{const b=$('#briefIn');if(b){b.focus();b.selectionStart=b.selectionEnd=b.value.length}},0)}break;
+   case 'doneBrief':if(t){S.briefEdit[t.id]=false;renderDrawer()}break;
+   case 'selT':e.stopPropagation();if(el.checked)S.sel[id]=1;else delete S.sel[id];renderMain();break;
+   case 'selAll':{const ts=filtered().filter(canDelT);if(el.checked)ts.forEach(x=>{S.sel[x.id]=1});else S.sel={};renderMain();break}
+   case 'clearSel':S.sel={};renderMain();break;
+   case 'bulkDel':{const ts=filtered().filter(x=>S.sel[x.id]&&canDelT(x));if(!ts.length)return;
+     confirmBox('Delete '+ts.length+' task'+(ts.length>1?'s':'')+'?',ts.slice(0,5).map(x=>'#'+x.n+' '+x.title).join(', ')+(ts.length>5?' and '+(ts.length-5)+' more':'')+'. Their time entries are deleted too. This cannot be undone.','Delete',()=>{
+       const ids=new Set(ts.map(x=>x.id));ts.forEach(x=>{x.files.forEach(f=>{if(f.path)sb.storage.from(BUCKET).remove([f.path])});notifyTask(x,'task','deleted task #'+x.n+' '+x.title)});
+       for(let i=entries.length-1;i>=0;i--)if(ids.has(entries[i].tid))entries.splice(i,1);for(let i=tasks.length-1;i>=0;i--)if(ids.has(tasks[i].id))tasks.splice(i,1);
+       lib.forEach(x=>{if(ids.has(x.task))x.task=null});if(S.timer&&ids.has(S.timer.tid)){S.timer=null;delete timers[S.me]}
+       Object.keys(marks).forEach(k=>{marks[k]=marks[k].filter(x=>!ids.has(x))});
+       S.sel={};if(S.drawer&&ids.has(S.drawer.id))S.drawer=null;renderAll();toast('Deleted '+ids.size+' task'+(ids.size>1?'s':'')+'.')});break}
+   case 'startWork':if(t){if(setStatus(t,'progress')!==false&&can('work',t)&&!(S.timer&&S.timer.tid===t.id))startTimer(t.id)}break;
+   case 'apOk':{const x=tById(id);if(x)setStatus(x,'approved','Approved.');break}
+   case 'apChg':{const x=tById(id);if(x){S.pend=x.id;openD('task',x.id)}break}
+   case 'calMove':{const v=+el.dataset.v;if(!v)S.cm=CUR_YM;else{let yy=+S.cm.slice(0,4),mm=+S.cm.slice(5)+v;if(mm<1){mm=12;yy--}if(mm>12){mm=1;yy++}S.cm=yy+'-'+String(mm).padStart(2,'0')}renderMain();break}
+   case 'calTy':S.cty=el.dataset.v;renderMain();break;
+   case 'calDay':{const d=el.dataset.v,its=[];visTasks().filter(x=>S.csp==='all'||x.sp===S.csp).forEach(x=>{if(S.cty!=='post'&&x.due===d)its.push([x,'Due']);if(S.cty!=='due'&&x.post===d)its.push([x,'Posting'])});
+     modal('<h3>'+dw(d)+' '+dd(d)+'</h3><div style="display:flex;flex-direction:column;max-height:60vh;overflow:auto">'+its.map(p2=>'<div class="li" data-act="open" data-id="'+p2[0].id+'"><i class="dot" style="background:'+spById(p2[0].sp).color+'"></i><div class="tt"><b>#'+p2[0].n+' '+esc(p2[0].title)+'</b><small>'+p2[1]+' · '+stN(p2[0].st)+'</small></div>'+avs(p2[0].as)+'</div>').join('')+'</div><div class="foot"><button type="button" class="btn" data-act="closeModal">Close</button></div>');break}
+  }
+  if(a==='open'&&!$('#modal').hidden&&el.closest('#modal'))closeModal();
+},true);
+document.addEventListener('keydown',function(e){if((e.key==='Enter'||e.key===' ')&&e.target.classList&&e.target.classList.contains('nrow')){e.preventDefault();const n=notifs.find(x=>x.id===e.target.dataset.id);if(n)openNotif(n)}});
+document.addEventListener('change',function(e){
+  const el=e.target;
+  if(el.id==='bulkSt'&&el.value){const ns=el.value,ts=filtered().filter(x=>S.sel[x.id]);let ok=0;ts.forEach(x=>{if(x.st!==ns&&setStatus(x,ns))ok++});S.sel={};renderAll();toast('Moved '+ok+' task'+(ok===1?'':'s')+' to '+stN(ns)+'.')}
+});
+document.addEventListener('submit',function(e){
+  if(e.target.dataset.form!=='sendreview')return;e.preventDefault();
+  const t=S.drawer&&S.drawer.type==='task'?tById(S.drawer.id):null;if(!t)return closeModal();
+  const d=new FormData(e.target),rv=d.get('rv')||'',note=(d.get('note')||'').trim();
+  if(rv)t.rv=rv;if(note)t.comments.push({u:S.me,at:nowS(),tx:note,kind:''});
+  closeModal();
+  if(t.st==='review'){logA(t,'re-sent this task for approval'+(t.rv?' to '+uById(t.rv).name:''),'approval',{also:rv?[rv]:[]});renderAll();toast('Reminder sent.');return}
+  setStatus(t,'review');
+});
+// a task opened from the calendar day list should close that list
+/* page title shows unread count and the running timer; long timers get a reminder */
+setInterval(function(){
+  const un=notifs.filter(n=>!n.read).length;let tt='';
+  if(S.timer&&tById(S.timer.tid)){const sec=elapsed();tt='⏱ '+clock(sec)+' · ';
+    const lvl=Math.floor(sec/7200);if(lvl>=1&&lvl>(S.timerWarn||0)){S.timerWarn=lvl;const x=tById(S.timer.tid);toast('⏱ Your timer on #'+x.n+' has been running for '+hm(sec)+'. Stop it if you are done.');beep(520);if(pushState()==='granted'&&document.hidden){try{new Notification('Timer still running',{body:'#'+x.n+' '+x.title+' · '+hm(sec),icon:'/icon-192.png',tag:'timer'})}catch(e){}}}}
+  document.title=tt+(un?'('+un+') ':'')+'FinStreet Marketing Hub';
+  $$('[data-since]').forEach(n=>{n.textContent=clock((Date.now()-(+n.dataset.since))/1000)});
+},1000);
 
 if(new URLSearchParams(location.search).get('new')){history.replaceState(null,'','/');setTimeout(()=>{if(can('create'))newTaskModal()},300)}
 renderAll();
