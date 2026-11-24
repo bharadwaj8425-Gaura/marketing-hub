@@ -545,3 +545,18 @@ tr.selr td{background:var(--accent-soft)}
 .howto p{margin:8px 0}
 .dl{font-weight:600}.dl.ok{color:var(--ok)}.dl.bad{color:var(--danger)}
 .ty-chat{color:var(--accent)}
+
+/* live work state on cards, lists and the task panel */
+.lv{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;border-radius:999px;padding:1px 8px;white-space:nowrap;line-height:1.6}
+.lv.run{background:var(--ok-bg);color:var(--ok)}
+.lv.idle{background:var(--surface-2);color:var(--muted)}
+.lv.never{background:var(--surface-2);color:var(--muted)}
+.lv.warn{background:var(--warn-bg);color:var(--warn)}
+.c-live{display:flex}
+.card:has(.lv.run){border-color:var(--ok);box-shadow:0 0 0 1px var(--ok)}
+.livebar{margin-bottom:12px}
+.livebar .lv{font-size:12.5px;padding:4px 10px}
+.nudge .lv{flex:none}
+.chip.live{display:inline-flex;align-items:center;gap:6px;color:var(--ok)}
+.chip.live.on{color:var(--bg)}
+.li .tt small .lv{font-size:10.5px;padding:0 6px}
