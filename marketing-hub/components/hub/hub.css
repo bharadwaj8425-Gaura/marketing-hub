@@ -533,3 +533,14 @@ tr.selr td{background:var(--accent-soft)}
   .cal-agenda{display:block}
   .bulk{position:sticky;top:0;z-index:5}
 }
+
+/* v8: alerts setup, bulk add */
+.switch.sm{transform:scale(.85);transform-origin:left center}
+.setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+.setup fieldset{border:1px solid var(--line);border-radius:10px;padding:10px 12px 12px;margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+.setup legend{display:flex;align-items:center;gap:6px;font-weight:600;font-size:13.5px;padding:0 4px}
+.setup .foot{grid-column:1/-1;align-items:center}
+.howto{margin-top:12px;font-size:12.5px;color:var(--muted)}
+.howto summary{cursor:pointer;color:var(--accent);font-weight:600}
+.howto p{margin:8px 0}
+.dl{font-weight:600}.dl.ok{color:var(--ok)}.dl.bad{color:var(--danger)}

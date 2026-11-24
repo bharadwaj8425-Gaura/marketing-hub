@@ -203,7 +203,8 @@ function vTasks(){
    +'<div class="seg" role="group" aria-label="Layout"><button data-act="layout" data-v="board" class="'+(S.layout==='board'?'on':'')+'">Board</button><button data-act="layout" data-v="list" class="'+(S.layout==='list'?'on':'')+'">List</button></div>'
    +(sp&&can('manage')?'<button class="btn" data-act="editSpace">'+ic('edit',15)+'Edit space</button>':'')
    +'<button class="btn" data-act="exportTasks" title="Download these tasks as CSV">'+ic('down',15)+'Export</button>'
-   +(can('create')?'<button class="btn" data-act="importTasks" title="Import tasks from a CSV file">'+ic('upload',15)+'Import</button><button class="btn primary" data-act="newTask">'+ic('plus')+'New task</button>':'')+'</div>';
+   +(S.layout==='board'&&ts.some(canDelT)?'<button class="btn" data-act="selMode" title="Select several tasks to delete or move">'+ic('check',15)+'Select</button>':'')
+   +(can('create')?'<button class="btn" data-act="importTasks" title="Import tasks from a CSV file">'+ic('upload',15)+'Import</button><button class="btn" data-act="bulkAdd" title="Add many tasks at once">'+ic('list',15)+'Add many</button><button class="btn primary" data-act="newTask">'+ic('plus')+'New task</button>':'')+'</div>';
   h+='<div class="bar">';
   if(sp){h+='<div class="chips"><button class="chip'+(S.fo==='all'?' on':'')+'" data-act="folder" data-id="all">All months</button>'+folders.filter(f=>f.sp===sp.id).map(f=>'<button class="chip'+(S.fo===f.id?' on':'')+'" data-act="folder" data-id="'+f.id+'">'+esc(f.name)+'</button>').join('')+((can('manage')||me().role==='member')?'<button class="chip add" data-act="newMonth">+ Month</button>':'')+'</div>'}
   h+='<span class="sp-gap"></span><select data-f="fa" aria-label="Filter by person"><option value="all">Everyone</option>'+activeUsers().slice().sort((a,b)=>a.name.localeCompare(b.name)).map(u=>'<option value="'+u.id+'"'+(S.fa===u.id?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select>'
@@ -301,7 +302,7 @@ function sendMsg(x){
   const m=M(S.ch,S.me,nowT(),(x&&x.tx)||'',x||{});
   if(S.reply){m.reply=S.reply;S.reply=null}
   messages.push(m);S.seen[S.ch]=(S.seen[S.ch]||0)+1;
-  if(m.tx){const ids=mentionIds(m.tx),c=channels.find(x=>x.id===m.ch);if(ids.length&&c)notifyUsers(ids,'mention',null,'mentioned you in '+(c.kind==='dm'?'a direct message':c.name)+': '+m.tx.slice(0,160),{ch:c.id})}
+  if(m.tx){const ids=mentionIds(m.tx),c=channels.find(x=>x.id===m.ch);if(ids.length&&c)notifyUsers(ids,'mention',null,'mentioned you in '+(c.kind==='dm'?'a direct message':c.name)+': '+m.tx.slice(0,160),{ch:c.id,ev:'mention'})}
   S.chatDraft='';renderMain();
 }
 
@@ -393,9 +394,7 @@ function vTeam(){
   h+='<div class="panel" style="margin-bottom:14px"><h3>Permission matrix</h3><div class="tbl-wrap" style="border:0"><table class="mtx"><thead><tr><th>Permission</th>'+['Admin','Manager','Reviewer','Team Member','External'].map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'
    +PERMS.map(r=>'<tr><td>'+r[0]+'</td>'+r.slice(1).map(c=>'<td>'+(c==='yes'?'<span class="yes">'+ic('check',16)+'</span>':c==='no'?'<span class="no">-</span>':'<span class="lim">'+c+'</span>')+'</td>').join('')+'</tr>').join('')+'</tbody></table></div></div>';
   const sw=(k,t,s)=>'<div class="sw-row"><p><b>'+t+'</b><small>'+s+'</small></p><button class="switch" role="switch" aria-checked="'+S.flags[k]+'" aria-label="'+t+'" data-act="flag" data-k="'+k+'"'+(m?'':' disabled')+'></button></div>';
-  h+='<div class="panel"><h3>Integrations<small>coming soon</small></h3>'+sw('wa','WhatsApp notifications','Sends alerts to team members’ WhatsApp numbers through the official Business API. WhatsApp does not allow linking existing groups, so the built-in chat stays the main channel.')
-   +(S.flags.wa?'<div class="wa">Task assigned to you\n*Thumbnails for Ep 42 (A/B set)*\nDue 30 Oct · Priority Urgent\nReply DONE 103 to mark it complete.</div>':'')
-   +sw('drive','Google Drive','Pick files and show link previews inside tasks.')+sw('yt','YouTube analytics','Pull views, likes and watch time into the video library.')+sw('cal','Google Calendar','Show due dates and publishing slots in your calendar.')+'</div>';
+  h+=alertsPanels();
   return h;
 }
 
@@ -477,12 +476,12 @@ function openD(type,id){S.drawer={type:type,id:id};S.tab='comments';S.bell=false
 function startTimer(id){
   const t=tById(id);if(!can('work',t))return deny('Only people assigned to this task can track time on it.');
   if(S.timer){const p=tById(S.timer.tid);stopTimer(true);toast('Stopped the timer on #'+p.n+'. Only one timer runs at a time.')}
-  S.timer={tid:id,start:Date.now()};timers[S.me]=S.timer;S.timerWarn=0;logA(t,'started the timer','timer');renderAll();
+  S.timer={tid:id,start:Date.now()};timers[S.me]=S.timer;S.timerWarn=0;logA(t,'started the timer (started working)','timer',{ev:'timer'});renderAll();
   toast('⏱ Timer started on #'+t.n+'. It keeps running in the top bar until you press Stop.');beep(880);
 }
 function stopTimer(quiet){
   if(!S.timer)return;const t=tById(S.timer.tid),sec=Math.max(60,Math.round(elapsed()));if(!t){S.timer=null;delete timers[S.me];renderAll();return}
-  entries.push({id:'e'+uid(),tid:t.id,uid:S.me,date:TODAY,secs:sec,note:'Timer',bill:1});logA(t,'stopped the timer and logged '+hm(sec),'timer');
+  entries.push({id:'e'+uid(),tid:t.id,uid:S.me,date:TODAY,secs:sec,note:'Timer',bill:1});logA(t,'stopped the timer and logged '+hm(sec),'timer',{ev:'timer'});
   S.timer=null;delete timers[S.me];if(!quiet){toast('Logged '+hm(sec)+' on #'+t.n+'.');renderAll()}else queueSync()
 }
 const isOwner=t=>t&&(t.by===S.me||can('manage'));
@@ -498,7 +497,8 @@ function setStatus(t,ns,note){
   if(ns==='approved'||ns==='completed')t.done=t.done||TODAY;
   if(ns==='changes')t.rev++;
   const apv=['review','approved','changes'].includes(ns);
-  logA(t,ns==='review'?'sent this task for approval'+(t.rv?' to '+uById(t.rv).name:''):ns==='approved'?'approved this task':ns==='changes'?'requested changes'+(note?': '+note.slice(0,140):''):'moved this task from '+stN(old)+' to '+stN(ns),apv?'approval':'task');
+  const evc={progress:'start',review:'review',approved:'approved',changes:'changes',completed:'done',cancelled:'cancel'}[ns]||'status';
+  logA(t,ns==='review'?'sent this task for approval'+(t.rv?' to '+uById(t.rv).name:''):ns==='approved'?'approved this task':ns==='changes'?'requested changes'+(note?': '+note.slice(0,140):''):ns==='progress'?'started working on this task':ns==='completed'?'closed this task (Completed)':ns==='cancelled'?'cancelled this task':'moved this task from '+stN(old)+' to '+stN(ns),apv?'approval':'task',{ev:evc});
   if(note)t.comments.push({u:S.me,at:nowS(),tx:note,kind:ns==='changes'?'changes':ns==='approved'?'approve':''});
   S.pend=null;toast(ns==='review'?'Sent for review'+(t.rv?' to '+uById(t.rv).name:(t.by&&t.by!==S.me?' to '+uById(t.by).name:''))+'.':ns==='completed'?'Task closed.':ns==='cancelled'?'Task cancelled.':'Moved to '+stN(ns)+'. Assignee and reviewer notified.');renderAll();return true;
 }
@@ -510,7 +510,7 @@ function addComment(t,kind){
   if(!tx)return;
   t.comments.push({u:S.me,at:nowS(),tx:tx,kind:''});S.draft[t.id]='';
   const ment=mentionIds(tx);if(ment.length)toast('Notified '+ment.map(i=>first(uById(i))).join(', '));
-  if(ment.length)notifyUsers(ment,'mention',t,'mentioned you on #'+t.n+': '+tx.slice(0,160));
+  if(ment.length)notifyUsers(ment,'mention',t,'mentioned you on #'+t.n+': '+tx.slice(0,160),{ev:'mention'});
   logA(t,'commented: '+tx.slice(0,160),'comment',{skip:ment});renderAll();
 }
 function modal(html){const m=$('#modal');m.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';m.hidden=false}
@@ -617,7 +617,7 @@ document.addEventListener('change',function(e){
   if(['fa','fp','dsp','dpe','ls','lst','rm','cst','sort','fown','csp','cty'].includes(f)){S[f]=el.value;renderMain();return}
   const t=S.drawer&&S.drawer.type==='task'?tById(S.drawer.id):null;if(!t)return;
   if(f==='st'){if(!setStatus(t,el.value))renderDrawer();return}
-  if(f==='addAs'){if(el.value){t.as.push(el.value);logA(t,'assigned '+uById(el.value).name+' to #'+t.n);toast(uById(el.value).name+' was notified.');renderAll()}return}
+  if(f==='addAs'){if(el.value){t.as.push(el.value);logA(t,'assigned '+uById(el.value).name+' to #'+t.n,'task',{ev:'assign'});toast(uById(el.value).name+' was notified.');renderAll()}return}
   if(f==='subd'){const sb2=t.subs[+el.dataset.i];sb2.d=el.checked?1:0;logA(t,(el.checked?'completed':'reopened')+' subtask “'+sb2.t+'”');renderAll();return}
   if(f==='chkd'){t.check[+el.dataset.i].d=el.checked?1:0;renderAll();return}
   if(f==='est'){t.est=parseFloat(el.value)||0;renderAll();return}
@@ -647,7 +647,7 @@ document.addEventListener('submit',function(e){
   if(f==='newtask'){
     const ym=d.get('fo').slice(d.get('sp').length+1);ensureFolder(d.get('sp'),ym);
     const t=T(d.get('sp'),ym,d.get('title').trim(),'todo',d.get('pri'),d.get('as'),d.get('rv'),d.get('start'),d.get('due'),{brief:d.get('brief'),post:d.get('post')||'',camp:d.get('camp')||'',log:[{u:S.me,tx:'created this task',at:nowS()}]});
-    tasks.push(t);notifyTask(t,'task','created #'+t.n+' '+t.title+(t.as[0]&&t.as[0]!==S.me?' and assigned it to '+uById(t.as[0]).name:'')+' · '+cap(t.pri)+' priority · due '+dd(t.due));closeModal();S.view='tasks';S.sp=t.sp;S.fo=t.fo;renderAll();openD('task',t.id);toast('Task #'+t.n+' created'+(d.get('as')&&d.get('as')!==S.me?' and '+uById(d.get('as')).name+' was notified':'')+'.');
+    tasks.push(t);notifyTask(t,'task','created #'+t.n+' '+t.title+(t.as[0]&&t.as[0]!==S.me?' and assigned it to '+uById(t.as[0]).name:'')+' · '+cap(t.pri)+' priority · due '+dd(t.due),{ev:'assign'});closeModal();S.view='tasks';S.sp=t.sp;S.fo=t.fo;renderAll();openD('task',t.id);toast('Task #'+t.n+' created'+(d.get('as')&&d.get('as')!==S.me?' and '+uById(d.get('as')).name+' was notified':'')+'.');
   }else if(f==='newspace'){
     const name=d.get('name').trim(),id='sp'+Date.now(),tpl=d.get('tpl');
     spaces.push({id:id,name:name,short:name.length>18?name.slice(0,16)+'…':name,color:d.get('color')});
@@ -837,6 +837,7 @@ document.addEventListener('click',function(e){
       modal('<h3>'+esc(u.name)+'</h3><form data-form="member" data-u="'+u.id+'" style="display:flex;flex-direction:column;gap:12px"><p class="muted" style="margin:0">'+esc(u.email||'')+'</p><label class="fld">Job title<input type="text" name="title" value="'+esc(u.title||'')+'" placeholder="For example, Video Editor"></label>'
        +(self?'<label class="fld">New password (leave empty to keep)<input type="password" name="pw" minlength="6" autocomplete="new-password"></label>':'')
        +(adm?'<label class="fld">Role<select name="role"'+(self?' disabled':'')+'>'+['admin','manager','reviewer','member','external'].map(r=>'<option value="'+r+'"'+(u.role===r?' selected':'')+'>'+ROLES[r]+'</option>').join('')+'</select></label><div class="fld">Spaces they can see (none ticked = all spaces)</div><div class="checks">'+spaces.map(s2=>'<label><input type="checkbox" name="sp" value="'+s2.id+'"'+(Array.isArray(u.sp)&&u.sp.includes(s2.id)?' checked':'')+'><i class="dot" style="background:'+s2.color+'"></i>'+esc(s2.short||s2.name)+'</label>').join('')+'</div>'+(self?'':'<label class="ck"><input type="checkbox" name="inactive"'+(u.active===false?' checked':'')+'><span>Deactivate (hides them from assignee lists and chats)</span></label>'):'<p class="muted" style="margin:0">Your role: '+ROLES[u.role]+'. Only an admin can change roles and space access.</p>')
+       +'<button type="button" class="btn" data-act="ntEdit" data-u="'+u.id+'" style="align-self:flex-start">'+ic('bell',14)+'Email and WhatsApp alerts</button>'
        +'<div class="foot">'+(adm&&!self?'<button type="button" class="btn danger" data-act="rmPerson" data-u="'+u.id+'" style="margin-right:auto">'+ic('trash',15)+'Remove from team</button>':'')+'<button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>');break}
    case 'addPerson':{if(me().role!=='admin')return;const pw='Fin'+Math.random().toString(36).slice(2,8)+'!';
       modal('<h3>Add person</h3><form data-form="addperson" style="display:flex;flex-direction:column;gap:12px"><p class="muted" style="margin:0">Creates their account straight away. Share the email and password with them; they can change the password after logging in.</p><label class="fld">Full name<input type="text" name="name" required placeholder="For example, Riya Sharma"></label><label class="fld">Work email<input type="email" name="email" required placeholder="name@finstreeteducation.com"></label><label class="fld">Password<input type="text" name="pw" required minlength="6" value="'+pw+'"></label><label class="fld">Job title<input type="text" name="title" placeholder="For example, Video Editor"></label><label class="fld">Role<select name="role">'+['member','reviewer','manager','admin','external'].map(r=>'<option value="'+r+'">'+ROLES[r]+'</option>').join('')+'</select></label><div class="fld">Spaces they can see (none ticked = all spaces)</div><div class="checks">'+spaces.map(s2=>'<label><input type="checkbox" name="sp" value="'+s2.id+'"><i class="dot" style="background:'+s2.color+'"></i>'+esc(s2.short||s2.name)+'</label>').join('')+'</div><p class="muted" style="margin:0;font-size:12.5px">Note: everyone with an @finstreeteducation.com email is an Admin automatically.</p><div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Add person</button></div></form>');break}
@@ -927,7 +928,7 @@ const SER={
   task:x=>{const c=Object.assign({},x);c.files=(x.files||[]).filter(f=>!f.up);return c},
   entry:x=>x, lib:x=>x, msg:x=>x, camp:x=>x, invite:x=>x,
   channel:x=>pick(x,['name','kind','sp','custom','members','desc']),
-  member:x=>pick(x,['title','role','sp','active']),
+  member:x=>pick(x,['title','role','sp','active','nt']),
   timer:x=>x, setting:x=>x, mark:x=>x
 };
 function collect(){
@@ -971,7 +972,7 @@ function applyRow(kind,id,doc,isDel){
     if(isDel){if(i>-1)arr.splice(i,1)}else{const o=Object.assign({},doc,{id:id});if(kind==='task'&&o.n>tn)tn=o.n;if(i>-1)arr[i]=o;else arr.push(o)}
     if(kind==='msg'&&!isDel&&doc.u!==S.me)ping(doc);
     return true}
-  if(kind==='member'){const u=users.find(x=>x.id===id);if(u&&isDel){users.splice(users.indexOf(u),1);return true}if(!u&&!isDel&&doc.name){users.push({id:id,name:doc.name,email:doc.email||'',title:doc.title||'',role:/@finstreeteducation\.com$/.test(doc.email||'')?'admin':(doc.role||'member'),hue:hueOf(id),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true});return true}if(u&&!isDel){const pa=(D.profiles||[]).find(x=>x.id===id);Object.assign(u,{title:doc.title||'',role:pa&&pa.role==='admin'?'admin':(doc.role||u.role),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true})}return true}
+  if(kind==='member'){const u=users.find(x=>x.id===id);if(u&&isDel){users.splice(users.indexOf(u),1);return true}if(!u&&!isDel&&doc.name){users.push({id:id,name:doc.name,email:doc.email||'',title:doc.title||'',role:/@finstreeteducation\.com$/.test(doc.email||'')?'admin':(doc.role||'member'),hue:hueOf(id),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true});return true}if(u&&!isDel){const pa=(D.profiles||[]).find(x=>x.id===id);Object.assign(u,{nt:doc.nt||null,title:doc.title||'',role:pa&&pa.role==='admin'?'admin':(doc.role||u.role),sp:doc.sp||'all',active:doc.active!==false,hasDoc:true})}return true}
   if(kind==='timer'){if(isDel){delete timers[id];if(id===S.me)S.timer=null}else{timers[id]=doc;if(id===S.me)S.timer=doc}return true}
   if(kind==='setting'&&id==='flags'&&!isDel){S.flags=doc;return true}
   if(kind==='mark'){if(isDel)delete marks[id];else marks[id]=Array.isArray(doc.ids)?doc.ids:[];return true}
@@ -1002,7 +1003,7 @@ function load(rows){
   (D.profiles||[]).forEach(p=>{if(!users.some(u=>u.id===p.id))users.push({id:p.id,name:p.full_name||String(p.email||'').split('@')[0]||'Member',email:p.email||'',title:'',role:p.role==='admin'?'admin':p.role==='manager'?'manager':'member',hue:hueOf(p.id),sp:'all',active:true})});
   rows.forEach(r=>{
     const d=r.doc||{};
-    if(r.kind==='member'){const u=users.find(x=>x.id===r.id);if(u){const pr=u.role;Object.assign(u,{title:d.title||'',role:pr==='admin'?'admin':(d.role||pr),sp:pr==='admin'?'all':(d.sp||'all'),active:d.active!==false,hasDoc:true})}}
+    if(r.kind==='member'){const u=users.find(x=>x.id===r.id);if(u){const pr=u.role;Object.assign(u,{nt:d.nt||null,title:d.title||'',role:pr==='admin'?'admin':(d.role||pr),sp:pr==='admin'?'all':(d.sp||'all'),active:d.active!==false,hasDoc:true})}}
     else if(r.kind==='timer'){timers[r.id]=d;if(r.id===S.me)S.timer=d}
     else if(r.kind==='setting'){if(r.id==='flags')S.flags=Object.assign(S.flags,d)}
     else if(r.kind==='mark'){marks[r.id]=Array.isArray(d.ids)?d.ids:[]}
@@ -1128,6 +1129,7 @@ function bulkBar(ts){
 function mentionIds(tx){const out=new Set();(String(tx||'').match(/@([A-Za-z]+)/g)||[]).forEach(m=>{const n=m.slice(1).toLowerCase();users.forEach(u=>{if(u.id!==S.me&&u.active!==false&&first(u).toLowerCase()===n)out.add(u.id)})});return Array.from(out)}
 
 /* ---------- notifications: stored per person in hub_docs (kind "notif") ---------- */
+const EVRANK=['other','status','comment','timer','start','assign','review','changes','approved','cancel','done','mention'];
 const NTYPE={task:'Task update',approval:'Approval',comment:'Comment',mention:'Mention',timer:'Timer'};
 const nbuf=new Map();let nT=null;
 function notifyTask(t,type,tx,extra){
@@ -1143,8 +1145,8 @@ function notifyUsers(ids,type,t,tx,extra){
     if(id===S.me)return;const u=users.find(x=>x.id===id);if(!u||u.active===false)return;
     if(u.role==='external'&&t&&!(t.as||[]).includes(id))return;
     const k=id+'|'+(t?t.id:extra.ch||'')+'|'+type;const ex=nbuf.get(k);
-    if(ex){if(ex.tx.length<400)ex.tx+=' · '+tx;return}
-    nbuf.set(k,{to:id,from:S.me,type:type,tid:t?t.id:'',tn:t?t.n:'',title:t?t.title:'',ch:extra.ch||'',tx:String(tx||''),at:new Date().toISOString(),read:false});
+    if(ex){if(ex.tx.length<400)ex.tx+=' · '+tx;if(extra.ev&&EVRANK.indexOf(extra.ev)>EVRANK.indexOf(ex.ev))ex.ev=extra.ev;return}
+    nbuf.set(k,{to:id,from:S.me,type:type,ev:extra.ev||(type==='comment'?'comment':type==='mention'?'mention':'other'),tid:t?t.id:'',tn:t?t.n:'',title:t?t.title:'',ch:extra.ch||'',tx:String(tx||''),at:new Date().toISOString(),read:false});
   });
   clearTimeout(nT);nT=setTimeout(flushN,1200);
 }
@@ -1158,7 +1160,7 @@ function gotNotif(id,doc,isDel){
   if(isDel){if(i>-1){notifs.splice(i,1);return true}return false}
   if(!doc||doc.to!==S.me)return false;
   const n=Object.assign({},doc,{id:id});
-  if(i>-1){notifs[i]=n;return true}
+  if(i>-1){if(notifs[i].read)n.read=true;notifs[i]=n;if(n.ev==='test'&&n.sent===true&&n.out&&S.testN===id){S.testN=null;toast('Test result · Email: '+(n.out.mail||'-')+' · WhatsApp: '+(n.out.wa||'-')+(n.out.error?' · '+n.out.error:''))}return true}
   notifs.unshift(n);
   if(Date.now()-Date.parse(n.at||0)<120000)alertNotif(n);
   return true;
@@ -1169,8 +1171,9 @@ async function refreshNotifs(){
 }
 function nText(n){return esc(uById(n.from).name)+' '+fmtText(n.tx||'')}
 function ago(iso){const s=(Date.now()-Date.parse(iso||0))/1000;if(!(s>=0))return '';if(s<60)return 'just now';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';const d=new Date(iso);return d.getDate()+' '+MS[d.getMonth()]+', '+d.toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})}
+function outTag(n){const o=n.out;if(!o)return '';const t=(k,l)=>o[k]==='sent'?' · <span class="dl ok">'+l+' sent</span>':/^error/.test(o[k]||'')?' · <span class="dl bad" title="'+esc(o[k])+'">'+l+' failed</span>':'';return t('mail','Email')+t('wa','WhatsApp')}
 function nRow(n){
-  return '<div class="nrow'+(n.read?'':' unread')+'" data-act="openN" data-id="'+n.id+'" role="button" tabindex="0">'+av(uById(n.from))+'<span class="nb"><span class="nt">'+nText(n)+'</span>'+(n.tn&&!String(n.tx||'').includes('#'+n.tn)?'<span class="ntask">#'+n.tn+' '+esc(n.title||'')+'</span>':'')+'<small>'+ago(n.at)+' · <i class="ntype ty-'+esc(n.type)+'">'+(NTYPE[n.type]||'Update')+'</i></small></span>'+(n.read?'':'<i class="udot" aria-label="Unread"></i>')+'</div>';
+  return '<div class="nrow'+(n.read?'':' unread')+'" data-act="openN" data-id="'+n.id+'" role="button" tabindex="0">'+av(uById(n.from))+'<span class="nb"><span class="nt">'+nText(n)+'</span>'+(n.tn&&!String(n.tx||'').includes('#'+n.tn)?'<span class="ntask">#'+n.tn+' '+esc(n.title||'')+'</span>':'')+'<small>'+ago(n.at)+' · <i class="ntype ty-'+esc(n.type)+'">'+(NTYPE[n.type]||'Update')+'</i>'+outTag(n)+'</small></span>'+(n.read?'':'<i class="udot" aria-label="Unread"></i>')+'</div>';
 }
 function markRead(list){
   list=list.filter(n=>!n.read);if(!list.length)return;
@@ -1317,6 +1320,111 @@ setInterval(function(){
   document.title=tt+(un?'('+un+') ':'')+'FinStreet Marketing Hub';
   $$('[data-since]').forEach(n=>{n.textContent=clock((Date.now()-(+n.dataset.since))/1000)});
 },1000);
+
+/* =====================================================================
+   v8: email + WhatsApp alerts per account, admin delivery setup,
+   add many tasks at once
+   ===================================================================== */
+const EVS=[['assign','Task assigned / new task'],['start','Work started'],['done','Task closed'],['review','Sent for approval'],['approved','Approved'],['changes','Changes requested'],['cancel','Task cancelled'],['mention','@mentions'],['timer','Timer start and stop'],['comment','Every comment']];
+const EV_DEFAULT=['assign','start','review','approved','changes','done','cancel','mention'];
+const ntOf=u=>Object.assign({mail:false,wa:false,email:'',phone:'',ev:EV_DEFAULT.slice()},u.nt||{});
+const canNt=u=>me().role==='admin'||u.id===S.me;
+function alertsPanels(){
+  const adm=me().role==='admin',list=adm?activeUsers():[me()];
+  const sw=(u,k,on)=>'<button class="switch sm" role="switch" aria-checked="'+on+'" aria-label="'+(k==='mail'?'Email':'WhatsApp')+' alerts for '+esc(u.name)+'" data-act="ntToggle" data-u="'+u.id+'" data-k="'+k+'"></button>';
+  let h='<div class="panel" style="margin-bottom:14px"><h3>Email and WhatsApp alerts<small>'+(adm?'add, change or remove for any account':'your account')+'</small></h3>'
+   +'<p class="muted" style="margin:0 0 10px;font-size:12.5px">When alerts are on, the person gets an email and/or WhatsApp message for the events ticked on their account: task assigned, work started, task closed, sent for approval, approved, changes requested'+(adm?'. Admins get these for every task in the team':'')+'.</p>'
+   +'<div class="tbl-wrap" style="border:0"><table class="team-now"><thead><tr><th>Person</th><th>Email for alerts</th><th>WhatsApp number</th><th>Email</th><th>WhatsApp</th><th></th></tr></thead><tbody>'
+   +list.map(u=>{const n=ntOf(u);return '<tr><td><span style="display:flex;gap:8px;align-items:center;white-space:nowrap">'+av(u)+esc(u.name)+'</span></td><td class="mono" style="font-size:12.5px">'+esc(n.email||u.email||'-')+'</td><td class="mono" style="font-size:12.5px">'+(n.phone?esc(n.phone):'<span class="muted">not added</span>')+'</td><td>'+sw(u,'mail',!!n.mail)+'</td><td>'+sw(u,'wa',!!n.wa)+'</td><td><button class="btn sm" data-act="ntEdit" data-u="'+u.id+'">'+ic('edit',13)+'Edit</button></td></tr>'}).join('')
+   +'</tbody></table></div></div>';
+  if(adm)h+=setupPanel();
+  return h;
+}
+function setupPanel(){
+  if(!S.secReq){S.secReq=1;sb.rpc('hub_secret_status').then(({data,error})=>{S.sec={};(data||[]).forEach(r=>{S.sec[r.name]=r.shown});S.secErr=error?error.message:'';if(S.view==='team')softRender()})}
+  const c=S.sec||{},v=k=>esc(c[k]||''),mp=c.MAIL_PROVIDER||'brevo',wp=c.WA_PROVIDER||'meta';
+  const mailOk=c.MAIL_KEY&&c.MAIL_FROM,waOk=c.WA_TOKEN&&c.WA_TEMPLATE&&(wp==='aisensy'||c.WA_PHONE_ID);
+  return '<div class="panel" style="margin-bottom:14px"><h3>Email and WhatsApp setup<small>admin only · keys are stored on the server and never shown again</small></h3>'
+   +(S.secErr?'<div class="banner">'+esc(S.secErr)+'</div>':'')
+   +'<form data-form="secrets" class="setup"><fieldset><legend>'+ic('mail',15)+' Email <span class="pill '+(mailOk?'st-completed':'st-todo')+'">'+(mailOk?'Ready':'Not set up')+'</span></legend>'
+   +'<label class="fld">Service<select name="MAIL_PROVIDER"><option value="brevo"'+(mp==='brevo'?' selected':'')+'>Brevo (free 300 emails a day, verify one sender email)</option><option value="resend"'+(mp==='resend'?' selected':'')+'>Resend (needs your domain verified)</option></select></label>'
+   +'<label class="fld">API key<input type="password" name="MAIL_KEY" autocomplete="off" placeholder="'+(c.MAIL_KEY?'Saved '+v('MAIL_KEY')+' · paste to replace':'Paste the API key')+'"></label>'
+   +'<label class="fld">Send from (email)<input type="email" name="MAIL_FROM" value="'+v('MAIL_FROM')+'" placeholder="admin@finstreeteducation.com"></label>'
+   +'<label class="fld">Sender name<input type="text" name="MAIL_FROM_NAME" value="'+v('MAIL_FROM_NAME')+'" placeholder="FinStreet Marketing Hub"></label></fieldset>'
+   +'<fieldset><legend>'+ic('chat',15)+' WhatsApp <span class="pill '+(waOk?'st-completed':'st-todo')+'">'+(waOk?'Ready':'Not set up')+'</span></legend>'
+   +'<label class="fld">Service<select name="WA_PROVIDER"><option value="meta"'+(wp==='meta'?' selected':'')+'>WhatsApp Cloud API (Meta)</option><option value="aisensy"'+(wp==='aisensy'?' selected':'')+'>AiSensy</option></select></label>'
+   +'<label class="fld">'+(wp==='aisensy'?'AiSensy API key':'Access token')+'<input type="password" name="WA_TOKEN" autocomplete="off" placeholder="'+(c.WA_TOKEN?'Saved '+v('WA_TOKEN')+' · paste to replace':'Paste the token')+'"></label>'
+   +(wp==='meta'?'<label class="fld">Phone number ID<input type="text" name="WA_PHONE_ID" value="'+v('WA_PHONE_ID')+'" placeholder="From Meta: WhatsApp > API Setup"></label>':'')
+   +'<label class="fld">'+(wp==='aisensy'?'Campaign name':'Approved template name')+'<input type="text" name="WA_TEMPLATE" value="'+v('WA_TEMPLATE')+'" placeholder="task_update"></label>'
+   +(wp==='meta'?'<label class="fld">Template language<input type="text" name="WA_LANG" value="'+v('WA_LANG')+'" placeholder="en"></label>':'')
+   +'<label class="fld">Variables in the template<select name="WA_PARAMS">'+[['3','3: {{1}} person, {{2}} what happened, {{3}} task'],['1','1: the whole message in {{1}}'],['2','2: {{1}} person, {{2}} message'],['0','0: fixed text (for example hello_world)']].map(o=>'<option value="'+o[0]+'"'+((c.WA_PARAMS||'3')===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label></fieldset>'
+   +'<input type="hidden" name="APP_URL" value="'+esc(location.origin)+'">'
+   +'<div class="foot" style="justify-content:flex-start;flex-wrap:wrap"><button type="submit" class="btn primary">Save settings</button><button type="button" class="btn" data-act="ntTest">'+ic('send',14)+'Send a test to me</button><span class="muted" style="font-size:12px">The test goes to your own email / WhatsApp from the table above, so switch those on first.</span></div></form>'
+   +'<details class="howto"><summary>How to get these keys</summary><p><b>Email (Brevo):</b> sign up free at brevo.com → Senders, Domains → add and verify your sender email → SMTP and API → API keys → Generate. Paste the key and the verified email above.</p><p><b>WhatsApp (Meta Cloud API):</b> developers.facebook.com → create a Business app → add WhatsApp → API Setup gives a phone number ID and a token (create a permanent token from a System User in Business settings). In WhatsApp Manager create a Utility template, for example <i>task_update</i>: “{{1}} {{2}} — {{3}}”, and wait for approval. Each team member must have WhatsApp on the number you add.</p><p><b>WhatsApp (AiSensy):</b> create an API campaign on an approved template, then paste the API key and the campaign name.</p></details></div>';
+}
+function ntSave(u,nt){u.nt=nt;u.hasDoc=true;u.dirty=true;renderAll()}
+function ntModal(u){
+  const n=ntOf(u);
+  modal('<h3>Alerts for '+esc(u.name)+'</h3><form data-form="ntform" data-u="'+u.id+'" style="display:flex;flex-direction:column;gap:12px">'
+   +'<div class="two"><label class="fld">Email for alerts<input type="email" name="email" value="'+esc(n.email)+'" placeholder="'+esc(u.email||'name@example.com')+'"></label><label class="fld">WhatsApp number<input type="tel" name="phone" value="'+esc(n.phone)+'" placeholder="98765 43210 (India) or +44…"></label></div>'
+   +'<label class="ck"><input type="checkbox" name="mail"'+(n.mail?' checked':'')+'><span>Send alerts by <b>email</b></span></label><label class="ck"><input type="checkbox" name="wa"'+(n.wa?' checked':'')+'><span>Send alerts on <b>WhatsApp</b></span></label>'
+   +'<div class="fld">Which updates</div><div class="checks">'+EVS.map(x=>'<label><input type="checkbox" name="ev" value="'+x[0]+'"'+(n.ev.includes(x[0])?' checked':'')+'>'+x[1]+'</label>').join('')+'</div>'
+   +'<p class="muted" style="margin:0;font-size:12.5px">Leave the email empty to use the login email ('+esc(u.email||'-')+'). Clear the number to remove WhatsApp.'+(u.role==='admin'?' Admins get these for every task.':' They get them for tasks they are assigned to, review or created.')+'</p>'
+   +'<div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>');
+}
+function bulkAddModal(){
+  const vs=visSpaces();if(!vs.length)return toast('No space available yet.');const sid=S.sp!=='all'&&vs.some(x=>x.id===S.sp)?S.sp:vs[0].id;
+  modal('<h3>Add many tasks</h3><form data-form="bulkadd" style="display:flex;flex-direction:column;gap:12px">'
+   +'<label class="fld">Tasks, one per line<textarea name="lines" rows="8" required placeholder="Ep 45 thumbnail\nEp 45 script | Rucha | 30-11-2026 | high\nInstagram reel cut | Sahil"></textarea></label>'
+   +'<p class="muted" style="margin:-4px 0 0;font-size:12.5px">Optional on each line, after a <b>|</b>: assignee name, due date, priority. Anything not given uses the defaults below.</p>'
+   +'<div class="two"><label class="fld">Space<select name="sp">'+vs.map(x=>'<option value="'+x.id+'"'+(x.id===sid?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select></label>'
+   +'<label class="fld">Assignee<select name="as">'+activeUsers().map(u=>'<option value="'+u.id+'"'+(u.id===S.me?' selected':'')+'>'+esc(u.name)+'</option>').join('')+'</select></label>'
+   +'<label class="fld">Reviewer<select name="rv"><option value="">No reviewer</option>'+activeUsers().filter(u=>['admin','manager','reviewer'].includes(u.role)).map(u=>'<option value="'+u.id+'">'+esc(u.name)+'</option>').join('')+'</select></label>'
+   +'<label class="fld">Priority<select name="pri"><option value="medium">Medium</option><option value="urgent">Urgent</option><option value="high">High</option><option value="low">Low</option></select></label>'
+   +'<label class="fld">Start date<input type="date" name="start" value="'+TODAY+'"></label><label class="fld">Due date<input type="date" name="due" value="'+addDays(TODAY,7)+'"></label></div>'
+   +'<div class="foot"><button type="button" class="btn" data-act="closeModal">Cancel</button><button type="submit" class="btn primary">Add tasks</button></div></form>');
+  setTimeout(()=>{const t=$('#modal textarea');if(t)t.focus()},0);
+}
+const findPerson=v=>{v=String(v||'').trim().toLowerCase();if(!v)return '';const u=activeUsers().find(x=>(x.email||'').toLowerCase()===v||String(x.name).toLowerCase()===v)||activeUsers().find(x=>first(x).toLowerCase()===v)||activeUsers().find(x=>String(x.name).toLowerCase().startsWith(v));return u?u.id:''};
+const normDate=v=>{v=String(v||'').trim();let m=v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');return ''};
+
+document.addEventListener('click',function(e){
+  const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act;
+  switch(a){
+   case 'ntToggle':{const u=uById(el.dataset.u);if(!canNt(u))return;const n=ntOf(u),k=el.dataset.k;n[k]=!n[k];
+     if(n[k]&&k==='wa'&&!n.phone){toast('Add a WhatsApp number first.');return ntModal(u)}
+     ntSave(u,n);toast((k==='mail'?'Email':'WhatsApp')+' alerts '+(n[k]?'on':'off')+' for '+u.name+'.');break}
+   case 'ntEdit':{const u=uById(el.dataset.u);if(canNt(u))ntModal(u);break}
+   case 'ntTest':{const u=me(),n=ntOf(u);if(!n.mail&&!n.wa)return toast('Switch on email or WhatsApp for your own account in the table first.');
+     const id='n'+uid();S.testN=id;sb.from('hub_docs').insert({kind:'notif',id:id,doc:{to:S.me,from:S.me,type:'task',ev:'test',tid:'',tn:'',title:'',ch:'',tx:'sent a test alert from the Marketing Hub',at:new Date().toISOString(),read:true}}).then(({error})=>toast(error?'Test failed: '+error.message:'Test sent. The result shows here in a few seconds.'));break}
+   case 'bulkAdd':bulkAddModal();break;
+   case 'selMode':S.layout='list';renderMain();toast('Tick the boxes on the left, then press Delete selected.');break;
+  }
+});
+document.addEventListener('submit',function(e){
+  const f=e.target.dataset.form;if(!f)return;
+  if(f==='ntform'){e.preventDefault();const d=new FormData(e.target),u=uById(e.target.dataset.u);if(!canNt(u))return;
+    const phone=String(d.get('phone')||'').trim(),digits=phone.replace(/\D/g,'');
+    if(phone&&digits.length<10)return toast('Enter a full WhatsApp number (10 digits, or with country code).');
+    const n={email:String(d.get('email')||'').trim(),phone:phone,mail:!!d.get('mail'),wa:!!d.get('wa')&&!!phone,ev:d.getAll('ev')};
+    closeModal();ntSave(u,n);toast('Alerts saved for '+u.name+'.');}
+  else if(f==='secrets'){e.preventDefault();if(me().role!=='admin')return;const d=new FormData(e.target),btn=e.target.querySelector('[type=submit]');btn.disabled=true;btn.textContent='Saving…';
+    const keys=['MAIL_PROVIDER','MAIL_KEY','MAIL_FROM','MAIL_FROM_NAME','WA_PROVIDER','WA_TOKEN','WA_PHONE_ID','WA_TEMPLATE','WA_LANG','WA_PARAMS','APP_URL'];
+    (async()=>{let err='';for(const k of keys){if(!d.has(k))continue;const val=String(d.get(k)||'').trim();if((k==='MAIL_KEY'||k==='WA_TOKEN')&&!val)continue;const {error}=await sb.rpc('hub_set_secret',{p_name:k,p_value:val});if(error){err=error.message;break}}
+      S.secReq=0;btn.disabled=false;btn.textContent='Save settings';toast(err?'Could not save: '+err:'Settings saved.');renderMain()})();}
+  else if(f==='bulkadd'){e.preventDefault();const d=new FormData(e.target),sp=d.get('sp'),lines=String(d.get('lines')||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+    if(!lines.length)return toast('Write at least one task.');
+    const made=[];
+    lines.forEach(line=>{const p=line.split('|').map(x=>x.trim());const title=p[0];if(!title)return;
+      const as=findPerson(p[1])||d.get('as'),due=normDate(p[2])||d.get('due'),pr=PRI.includes(String(p[3]||'').toLowerCase())?String(p[3]).toLowerCase():d.get('pri');
+      const ym=(due||TODAY).slice(0,7);ensureFolder(sp,ym);
+      const t=T(sp,ym,title,'todo',pr,as,d.get('rv'),d.get('start')||TODAY,due,{log:[{u:S.me,tx:'created this task',at:nowS()}]});tasks.push(t);made.push(t)});
+    const byA={};made.forEach(t=>{const a2=t.as[0];if(a2&&a2!==S.me)(byA[a2]=byA[a2]||[]).push(t)});
+    Object.keys(byA).forEach(a2=>notifyUsers([a2],'task',null,'assigned you '+byA[a2].length+' new task'+(byA[a2].length>1?'s':'')+': '+byA[a2].map(t=>'#'+t.n+' '+t.title).join(', ').slice(0,300),{ev:'assign'}));
+    const admins=users.filter(u=>u.role==='admin'&&u.active!==false&&!byA[u.id]).map(u=>u.id);
+    notifyUsers(admins,'task',null,'added '+made.length+' tasks in '+spById(sp).name+': '+made.map(t=>'#'+t.n+' '+t.title).join(', ').slice(0,300),{ev:'assign'});
+    closeModal();S.view='tasks';S.sp=sp;S.fo='all';S.fx=null;renderAll();toast('Added '+made.length+' task'+(made.length>1?'s':'')+'.');}
+});
 
 if(new URLSearchParams(location.search).get('new')){history.replaceState(null,'','/');setTimeout(()=>{if(can('create'))newTaskModal()},300)}
 renderAll();

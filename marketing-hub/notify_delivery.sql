@@ -1,0 +1,10 @@
+-- Email / WhatsApp delivery for hub notifications. Already applied to Supabase on 2026-11-24.
+-- Pieces:
+--   pg_net extension
+--   public.hub_secrets            provider keys, no RLS policies (server-only)
+--   public.hub_set_secret()       admin saves a setting from Team and access
+--   public.hub_secret_status()    admin sees which settings are saved (keys masked)
+--   public.hub_claim_notif()      service role claims a notification once
+--   trigger trg_hub_notif         on insert of kind='notif' calls the hub-notify edge function
+-- Edge function source: supabase/functions/hub-notify/index.ts (deployed with verify_jwt = false;
+-- it only accepts a notification id and reads the row itself with the service role).
